@@ -426,8 +426,29 @@ To be ratified by the Board so that it is church policy rather than an ICT decis
 | Contact and sensitive extras — mobile, email, home address, emergency contact | **Purged two years** after status becomes `TRANSFERRED` or `DECEASED`; the purpose for holding them has ended |
 | Rows | **Never hard-deleted.** Fields are blanked; the person remains |
 
-Implemented as the `purge_stale_contacts` management command, run on a schedule,
-keyed on `status_changed_at`, writing each purge to the audit log.
+**The purge must reach the change history, not only the live record.** `Person` carries
+`django-simple-history`, so every edit writes a complete copy of the contact fields to the
+historical table, which the admin renders on its history page. A purge that blanks only the
+current row leaves every earlier value readable indefinitely and delivers none of the policy
+above. The command therefore blanks all contact fields across every stored revision as well, and
+must use the full contact field list rather than only the fields currently populated on the live
+row, because history can hold a value the live record has since lost.
+
+**Household addresses follow the household, not the person.** `Household.address` holds the same
+home address as its members. It is cleared only once *every* member of that household is
+purgeable and past the window — one person transferring must not erase an address the rest of
+the family still needs.
+
+Implemented as the `purge_stale_contacts` management command, run on a schedule, keyed on
+`status_changed_at`. Each purge writes a `PurgeRecord` naming the person, the fields cleared and
+the number of revisions scrubbed. That record is the only durable evidence a purge occurred once
+the history is scrubbed, so it is readonly and undeletable through the admin, and the person's
+identity is snapshotted as text so it survives independently of the person row.
+
+**Known residuals, accepted:** free-text `notes` and `follow_up_notes` are not scrubbed and can
+accumulate phone numbers written by hand — a data-entry habit for the Secretariat to avoid,
+rather than something the command can safely guess at. A linked `User.email` also survives, which
+is moot while Phase A issues no member logins but must be revisited if that changes.
 
 ### 5.2 Other measures
 
@@ -690,7 +711,7 @@ parametrised.
 | Control numbers | `MEM-` uniqueness, sequence allocation, manual override, concurrent allocation under `select_for_update` |
 | Status transitions | `status_changed_at` stamped; `approved_by` required when *changing* to `MEMBER`; **not** required when *creating* at `MEMBER` (§3.2.2) — the backlog must stay encodable |
 | Appointments | Unique-holder positions cannot overlap |
-| Retention | `purge_stale_contacts` blanks the right fields, spares identity data, respects the two-year boundary, logs |
+| Retention | `purge_stale_contacts` blanks the right fields on the live row **and across every historical revision**, spares identity data, tests the two-year boundary at 729 and 731 days, exercises `DECEASED` as well as `TRANSFERRED`, clears a household address only once nobody in it is current, and writes a `PurgeRecord` |
 | Audit | Person views written to `AccessLog`; edits captured by simple-history; a list report writes exactly one entry, not one per row (§7.6) |
 | Encoding | Incomplete records save; `has_missing_data` set correctly; follow-up queue filters |
 | Celebration exclusions | Deceased, transferred, `date_of_death` set, and `greeting_opt_out` people never appear on any greeting list. Birth **year** never rendered |

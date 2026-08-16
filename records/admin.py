@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from records.models import AccessLog, FormScan
+from records.models import AccessLog, FormScan, PurgeRecord
 
 
 @admin.register(FormScan)
@@ -20,6 +20,27 @@ class AccessLogAdmin(admin.ModelAdmin):
     list_display = ("timestamp", "user", "person", "report", "ip_address")
     list_filter = ("user",)
     readonly_fields = ("user", "person", "report", "timestamp", "ip_address")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PurgeRecord)
+class PurgeRecordAdmin(admin.ModelAdmin):
+    list_display = ("purged_at", "person_label", "history_rows_scrubbed", "person")
+    readonly_fields = (
+        "person",
+        "person_label",
+        "fields_cleared",
+        "history_rows_scrubbed",
+        "purged_at",
+    )
 
     def has_add_permission(self, request):
         return False

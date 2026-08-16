@@ -76,3 +76,25 @@ class AccessLog(models.Model):
         return cls.objects.create(
             user=user, person=person, report=report, ip_address=ip
         )
+
+
+class PurgeRecord(models.Model):
+    """Durable evidence that contact data was cleared under the retention policy.
+
+    The person's identity is snapshotted as text so the record still means
+    something even if the person row is ever removed.
+    """
+
+    person = models.ForeignKey(
+        "people.Person", null=True, blank=True, on_delete=models.SET_NULL
+    )
+    person_label = models.CharField(max_length=220)
+    fields_cleared = models.TextField()
+    history_rows_scrubbed = models.IntegerField(default=0)
+    purged_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-purged_at",)
+
+    def __str__(self):
+        return f"{self.person_label} purged {self.purged_at:%Y-%m-%d}"
