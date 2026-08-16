@@ -3,23 +3,13 @@ from django.core.exceptions import PermissionDenied
 from simple_history.admin import SimpleHistoryAdmin
 
 from committees.models import CommitteeMembership, CommitteeRole
-from core import groups
+from core.groups import is_chairperson_only
 from core.numbering import next_member_no
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
 
 # Spec D12: enough to run a committee, and nothing more.
 CHAIRPERSON_FIELDS = ("first_name", "last_name", "nickname", "mobile_number", "email")
-
-WIDER_ACCESS_GROUPS = (groups.ICT, groups.SECRETARIAT, groups.BOARD)
-
-
-def is_chairperson_only(user) -> bool:
-    """True for a user who is a Chairperson and nothing more privileged."""
-    if user.is_superuser:
-        return False
-    names = set(user.groups.values_list("name", flat=True))
-    return groups.CHAIRPERSON in names and not names & set(WIDER_ACCESS_GROUPS)
 
 
 def find_possible_duplicates(person):

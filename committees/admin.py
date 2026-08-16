@@ -1,9 +1,11 @@
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
 from simple_history.admin import SimpleHistoryAdmin
 
 from committees.models import (
-    Appointment, Committee, CommitteeFunction, CommitteeMembership, Position,
+    Appointment, Committee, CommitteeFunction, CommitteeMembership, CommitteeRole, Position,
 )
+from core.groups import is_chairperson_only
 
 
 class CommitteeFunctionInline(admin.TabularInline):
@@ -32,6 +34,30 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin):
     list_filter = ("committee", "role")
     search_fields = ("person__last_name", "person__first_name")
     autocomplete_fields = ("person", "committee", "function")
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if not is_chairperson_only(request.user):
+            return queryset
+        chaired = (
+            CommitteeMembership.objects.active()
+            .filter(
+                person__user=request.user,
+                role__in=(CommitteeRole.CHAIRPERSON, CommitteeRole.CO_CHAIR),
+            )
+            .values_list("committee_id", flat=True)
+        )
+        return queryset.filter(committee_id__in=chaired)
+
+    def history_view(self, request, object_id, extra_context=None):
+        if is_chairperson_only(request.user):
+            raise PermissionDenied
+        return super().history_view(request, object_id, extra_context)
+
+    def history_form_view(self, request, object_id, version_id, extra_context=None):
+        if is_chairperson_only(request.user):
+            raise PermissionDenied
+        return super().history_form_view(request, object_id, version_id, extra_context)
 
 
 @admin.register(Position)
