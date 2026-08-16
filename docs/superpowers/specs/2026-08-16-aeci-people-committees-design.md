@@ -55,6 +55,13 @@ records.
 - Attendance tracking, baptism and child dedication records, transfer letters,
   visitor cards. These forms do not yet exist at AECI. The schema leaves room; the
   features are deferred.
+- Any visitor-facing feature. Visitors are not given the profiling form, so no visitor
+  data exists to work with (D14).
+- Member photographs. Useful for recognising faces, but photographs of minors need
+  their own consent conversation, which is not a Phase A fight.
+- Duplicate *merging*. Phase A finds duplicates (§7.2); merging waits until enough
+  have accumulated to show what merging should actually do.
+- SMS notification of any kind (D17).
 - OCR of scanned forms (see §6.4)
 - Everything in subsystems B, C and D
 
@@ -79,6 +86,10 @@ Decisions agreed during design, with the reasoning that produced them.
 | D11 | **Scans go to S3-compatible object storage from day one** | Free-tier app hosting has an ephemeral filesystem; local uploads are lost on redeploy and idle spin-down |
 | D12 | **Chairpersons see name, mobile and email only** | Enough to run a committee; withholds address, birthdate, civil status, family and emergency contact from twelve people who do not need them |
 | D13 | **No OCR** | Handwriting recognition on Filipino names and handwritten dates takes longer to verify than to type, and a silently mis-read birthdate is worse than a blank one |
+| D14 | **Default status is `RELATED`; `VISITOR` is unused for now** | AECI does not give the profiling form to visitors. Every record entering the system is a member, their child, or someone named on their form. Defaulting to `VISITOR` would assert attendance nobody recorded |
+| D15 | **`approved_by` is required on transition to `MEMBER`, not on creation as `MEMBER`** | Requiring it on creation would make the paper backlog un-encodable, since nobody knows which meeting accepted a long-standing member. Scoping it to transitions keeps encoding fast and future decisions attributable |
+| D16 | **Phase A includes a read-only reporting layer** (§7) | Requested by the Church Secretary, and every report is a query over data the schema already holds. No new collection, and the marginal cost over the encoding tool is small |
+| D17 | **Greeting lists show month and day only, and there is no SMS** | Birth year reveals age to twelve chairpersons who have no need for it. SMS costs money per message in the Philippines and email coverage on the paper forms is patchy; an on-screen list with an optional weekly email digest covers the need |
 
 ---
 
@@ -122,6 +133,7 @@ Formats: `MEM-0001` (4 digits, no year, never resets). `EARF-2026-001`,
 | `first_name` | CharField(100) | **required** |
 | `middle_name` | CharField(100) | blank |
 | `suffix` | CharField(20) | blank |
+| `nickname` | CharField(60) | blank; the name a person actually goes by. Used in greetings, and needed because the Board document records several officers only as "MJ", "JM" |
 | `date_of_birth` | DateField | null |
 | `place_of_birth` | CharField(200) | blank |
 | `gender` | CharField, choices | `MALE`, `FEMALE`; blank permitted |
@@ -130,8 +142,9 @@ Formats: `MEM-0001` (4 digits, no year, never resets). `EARF-2026-001`,
 | `home_address` | TextField | blank |
 | `mobile_number` | CharField(20) | blank |
 | `email` | EmailField | blank |
-| `membership_status` | CharField, choices | See §3.2.1; default `VISITOR` |
+| `membership_status` | CharField, choices | See §3.2.1; default `RELATED` |
 | `status_changed_at` | DateTimeField | null; drives the retention job |
+| `date_of_death` | DateField | null; removes the person from all greeting lists (§7.1) |
 | `date_filed` | DateField | null; the date written on the paper form |
 | `date_became_member` | DateField | null |
 | `approved_by` | FK → Person | null; who accepted this person into membership |
@@ -143,6 +156,7 @@ Formats: `MEM-0001` (4 digits, no year, never resets). `EARF-2026-001`,
 | `consent_given` | BooleanField | default False |
 | `consent_date` | DateField | null |
 | `consent_version` | CharField(20) | blank |
+| `greeting_opt_out` | BooleanField | default False; suppresses this person from birthday and anniversary lists |
 | `has_missing_data` | BooleanField | default False; maintained on save, see §6.3 |
 | `follow_up_notes` | TextField | blank |
 | `notes` | TextField | blank |
@@ -154,14 +168,43 @@ abandons.
 
 #### 3.2.1 `membership_status`
 
-`VISITOR` · `CHILD` · `MEMBER` · `INACTIVE` · `TRANSFERRED` · `DECEASED`
+`MEMBER` · `CHILD` · `RELATED` · `VISITOR` · `INACTIVE` · `TRANSFERRED` · `DECEASED`
 
-`CHILD` means a minor under the family's membership who is not yet a full member. It
-is **not** derived from date of birth: a nineteen-year-old who has never formally
-joined is not automatically a member.
+| Value | Meaning |
+| --- | --- |
+| `MEMBER` | Formally accepted into membership. Holds a `member_no` |
+| `CHILD` | A minor under the family's membership, not yet a full member |
+| `RELATED` | Exists in the database only because they are connected to a member — a spouse who does not attend, a guardian outside the household. Not a visitor, not a member |
+| `VISITOR` | Attends but has not joined. **Currently unused**: AECI does not give the profiling form to visitors, so no visitor records exist yet. Retained for when visitor cards are introduced |
+| `INACTIVE` | A member who has stopped participating |
+| `TRANSFERRED` | Moved to another congregation |
+| `DECEASED` | See also `date_of_death` |
+
+`CHILD` is **not** derived from date of birth: a nineteen-year-old who has never
+formally joined is not automatically a member.
+
+**The default is `RELATED`, not `VISITOR`.** A bare `Person` row created incidentally
+— a guardian named on a child's record, a spouse named on a profiling form — is a
+related person. Defaulting such rows to `VISITOR` would assert an attendance fact
+nobody recorded, and would pollute visitor reporting the moment visitor cards arrive.
 
 Records are never deleted. Status changes instead. Any status change stamps
 `status_changed_at`.
+
+#### 3.2.2 When `approved_by` is required
+
+D8 requires a human approver for membership. Applied naively this would make the
+paper backlog un-encodable, because nobody knows which Board meeting accepted a member
+who joined years ago. The rule is therefore scoped to transitions:
+
+- **Creating** a `Person` already at status `MEMBER` does **not** require
+  `approved_by`. This is the Secretariat recording an acceptance that happened before
+  the system existed.
+- **Changing** an existing `Person` to `MEMBER` from any other status **does** require
+  `approved_by`. This is an acceptance happening now, and the system must record who
+  made it.
+
+Encoding the backlog stays fast; every future membership decision stays attributable.
 
 **`Household`**
 
@@ -438,9 +481,113 @@ encoding task, not a design problem, but it will surface on day one.
 
 ---
 
-## 7. Architecture and deployment
+## 7. Reporting and dashboards
 
-### 7.1 Project layout
+A read-only layer over the schema of §3. Requested by the Church Secretary, and
+extended to cover gaps visible in the Board and Committee document of 5 July 2026.
+Nothing here requires collecting data the church does not already gather (D16).
+
+### 7.1 Celebrations
+
+The Secretary's original request. The natural owner is the **Sunshine Committee**,
+which handles greetings and benevolence, so its chairperson sees this alongside the
+Secretariat.
+
+| Report | Source |
+| --- | --- |
+| Upcoming birthdays | `Person.date_of_birth` |
+| Wedding anniversaries | `Household.date_of_marriage` |
+| Membership anniversaries | `Person.date_became_member` |
+| Committee service anniversaries | `CommitteeMembership.date_joined` |
+
+**Exclusions, applied to every celebration list:** `membership_status` of `DECEASED`
+or `TRANSFERRED`, any person with `date_of_death` set, and any person with
+`greeting_opt_out`. A deceased member appearing on a birthday list is the kind of
+error that is embarrassing once and preventable permanently.
+
+**Display:** month and day only, never the year (D17).
+
+**Greeting text generator.** Composes a ready message using the person's `nickname`,
+for pasting into the church Facebook page or Messenger. AECI's congregation is reached
+primarily through that page, so this converts a list of dates into a task that takes
+seconds.
+
+**Delivery:** on-screen list, plus an optional weekly email digest to the Secretariat
+and the Sunshine chairperson. No SMS (D17).
+
+**Interaction with data quality:** many paper forms carry no birthdate. Those people
+cannot appear here, which makes the celebrations page a standing, visible argument for
+working the follow-up queue (§6.3).
+
+### 7.2 Operational queues
+
+Work the Secretariat currently tracks from memory.
+
+| Queue | Rule |
+| --- | --- |
+| Needs follow-up | `has_missing_data` is true |
+| Consent not yet signed | `consent_given` is false |
+| New members to welcome | `date_became_member` within the last 60 days |
+| Officer terms expiring | `Appointment.end_date` within the next 90 days |
+| Children ageing into Youth | Turning 13 within 90 days |
+| Children ageing out of `CHILD` | Turning 18 within 90 days — prompts a human decision, never an automatic status change (D8) |
+| Possible duplicates | Similar name plus birthdate. Finder only; merging is out of scope |
+| Recent changes | From `django-simple-history`, so the Secretariat lead can catch encoding mistakes early |
+
+### 7.3 Committee management
+
+Serves the "Finalize Committee Members and Functions" and "Oversight Board per
+Committee" action items in the Board document, which currently has visible blanks —
+Sunshine records no Co-Chair or Core Members, General Services no Oversight.
+
+| Report | Contents |
+| --- | --- |
+| Staffing gaps | Committees lacking an active chairperson, a co-chair, or an assigned Board `OVERSIGHT` appointment |
+| Recruitment availability | Members at the two-committee cap, versus members serving on none |
+| Contact export | Name, mobile and email for one committee, in a form that can be pasted into a group chat. Chairperson-scoped, so no one can export the whole congregation |
+
+### 7.4 Board statistics
+
+For church planning sessions such as the "Presentation and Discussion of Church Plans"
+scheduled in the Board document.
+
+Headcount by `membership_status`; committee sizes and vacancies; age bands (children,
+youth, young adult, adult, senior); gender split; new members per month; and overall
+data completeness as a percentage.
+
+### 7.5 Printable and copyable output
+
+For people who will not log in.
+
+| Output | Use |
+| --- | --- |
+| Committee roster | Posting and handouts |
+| Children's Ministry roster | Includes guardian names and numbers, for pickup and safety |
+| Emergency contact sheet | Events, trips, outings |
+| Pre-filled profiling form | Prints a person's record in the layout of the paper form, so they can verify it and sign. Closes the loop on both accuracy and consent |
+
+### 7.6 Access rules for reports
+
+Every report honours the field-level restrictions of §4. A chairperson's contact
+export cannot contain fields a chairperson may not see.
+
+| Report group | Visible to |
+| --- | --- |
+| Celebrations | Secretariat, Sunshine chairperson, ICT |
+| Operational queues | Secretariat, ICT |
+| Committee management | Secretariat, Board, ICT; chairpersons see their own committee only |
+| Board statistics | Board, Secretariat, ICT — aggregate figures only, no individuals |
+| Printable output | Secretariat, ICT; chairpersons for their own committee |
+
+**Audit granularity.** A report listing thirty people writes **one** `AccessLog` entry
+naming the report and its scope, not thirty. Per-person logging is reserved for the
+Person detail view. Logging every row would bury the signal the log exists to provide.
+
+---
+
+## 8. Architecture and deployment
+
+### 8.1 Project layout
 
 Small apps with clear seams, so later subsystems bolt on rather than cut in.
 
@@ -454,7 +601,7 @@ Small apps with clear seams, so later subsystems bolt on rather than cut in.
 | `finance` | Ledger, OR numbers, budget vs actual | C |
 | `governance` | Minutes, quorum, action items | D |
 
-### 7.2 Stack
+### 8.2 Stack
 
 - Python 3.12+, Django 5.x
 - PostgreSQL
@@ -469,7 +616,7 @@ Phase A is **admin-only**: no Tailwind, no HTMX, no custom templates. Those arri
 Phase B, when committee heads need mobile screens. Building a front-end now would
 serve users who do not yet exist.
 
-### 7.3 Deployment
+### 8.3 Deployment
 
 All free tier, all replaceable, no lock-in (D2). Specific providers to be confirmed
 against current free-tier terms at build time.
@@ -487,7 +634,7 @@ lost. Object storage from day one is therefore not an optimisation but a correct
 requirement (D11), and Django's storage backend keeps it a settings change when the
 church moves to paid hosting.
 
-### 7.4 Backups
+### 8.4 Backups
 
 Higher stakes here than anywhere else in the system: a lost church register cannot be
 reconstructed.
@@ -500,7 +647,7 @@ reconstructed.
 
 ---
 
-## 8. Testing
+## 9. Testing
 
 The permission matrix of §4 *is* the test suite — every role against every capability,
 parametrised.
@@ -512,15 +659,18 @@ parametrised.
 | Field-level scoping | Address, birthdate, civil status, family absent from chairperson views |
 | Committee rules | Max-two cap; appointed roles exempt; one chairperson per committee; function belongs to committee |
 | Control numbers | `MEM-` uniqueness, sequence allocation, manual override, concurrent allocation under `select_for_update` |
-| Status transitions | `status_changed_at` stamped; `approved_by` required for `MEMBER` |
+| Status transitions | `status_changed_at` stamped; `approved_by` required when *changing* to `MEMBER`; **not** required when *creating* at `MEMBER` (§3.2.2) — the backlog must stay encodable |
 | Appointments | Unique-holder positions cannot overlap |
 | Retention | `purge_stale_contacts` blanks the right fields, spares identity data, respects the two-year boundary, logs |
-| Audit | Person views written to `AccessLog`; edits captured by simple-history |
+| Audit | Person views written to `AccessLog`; edits captured by simple-history; a list report writes exactly one entry, not one per row (§7.6) |
 | Encoding | Incomplete records save; `has_missing_data` set correctly; follow-up queue filters |
+| Celebration exclusions | Deceased, transferred, `date_of_death` set, and `greeting_opt_out` people never appear on any greeting list. Birth **year** never rendered |
+| Date-boundary reports | Birthdays and anniversaries roll correctly across a year end, and handle 29 February |
+| Report access | Each report against each role; a chairperson's contact export contains no field they may not see; Board statistics expose aggregates only |
 
 ---
 
-## 9. Open items
+## 10. Open items
 
 Tracked, not blocking implementation.
 
@@ -536,6 +686,6 @@ Tracked, not blocking implementation.
 
 ---
 
-## 10. Next step
+## 11. Next step
 
 Produce the implementation plan for Phase A from this document.
