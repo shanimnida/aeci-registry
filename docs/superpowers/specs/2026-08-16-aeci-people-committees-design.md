@@ -385,9 +385,22 @@ way.
 committee. Home address, birthdate, civil status, household, children and emergency
 contact are hidden, as is every person not on their roster (D12).
 
-**Separation of duties.** The Secretariat manages records but cannot create logins;
-ICT creates logins but cannot set membership status. Neither role can unilaterally
-manufacture a member.
+**Separation of duties, stated honestly.** The Secretariat manages records but cannot create
+logins. The Board accepts members but cannot administer accounts. Neither of those two roles can
+unilaterally manufacture a member, and that separation *is* enforced by permissions.
+
+**ICT is exempt, and the earlier wording of this section was wrong to imply otherwise.** ICT holds
+the full permission set — it is the system administrator role — so it can technically do anything,
+including creating a login and granting membership. An earlier draft claimed ICT "cannot set
+membership status" while the matrix above simultaneously granted it, which was a contradiction
+rather than a rule. There is no way to give one role the ability to repair the system and also
+withhold the ability to misuse it.
+
+What constrains ICT is therefore not permission but evidence: every change is captured by
+`django-simple-history`, every view of a person's record is written to `AccessLog`, and both are
+readable by the Board. The check on the administrator is that the administrator's actions are
+visible to someone else, not that they are blocked. A church deploying this should understand that
+whoever holds the ICT account is trusted, and should choose that person accordingly.
 
 **Deletion.** Nobody deletes people; status changes instead. Hard delete is ICT-only,
 logged, and exists solely for genuine mistakes such as a duplicated row.
