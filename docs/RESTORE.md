@@ -177,8 +177,8 @@ looks like this:
 ## Known gaps (deliberately out of scope here)
 
 - **Scheduling.** Nothing runs `backup_database` automatically yet. Most
-  free-tier hosts have no usable cron; wiring up a schedule belongs in the
-  deployment runbook, not this command.
+  free-tier hosts have no usable cron; wiring up a schedule belongs in
+  [the deployment runbook](DEPLOYMENT.md), not this command.
 - **The spec §8.4 admin spreadsheet export** is a separate reporting
   feature, not part of database backup/restore.
 
