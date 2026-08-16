@@ -21,3 +21,18 @@ def is_chairperson_only(user) -> bool:
         return False
     names = set(user.groups.values_list("name", flat=True))
     return CHAIRPERSON in names and not names & set(WIDER_ACCESS_GROUPS)
+
+
+def is_ict(user) -> bool:
+    """True for ICT — the only role permitted to attach a login to a Person.
+
+    Linking `Person.user` is what gives `is_chairperson_only` scoping any
+    effect at all, so who may set it has to follow the same separation of
+    duties the group permissions already encode: the Secretariat manages
+    membership data but must never be able to grant someone access by
+    linking a login itself. Superusers are treated as ICT for this purpose,
+    same as elsewhere in the admin.
+    """
+    if user.is_superuser:
+        return True
+    return ICT in set(user.groups.values_list("name", flat=True))

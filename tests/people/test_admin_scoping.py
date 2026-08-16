@@ -117,3 +117,85 @@ def test_someone_who_left_the_committee_is_no_longer_visible(chair_setup):
 
     admin_obj = PersonAdmin(Person, AdminSite())
     assert mine not in admin_obj.get_queryset(request_for(user))
+
+
+@pytest.mark.django_db
+def test_ict_sees_the_user_field(db):
+    # get_fields() is not the right probe here: without an explicit `fields`
+    # attribute, Django's ModelAdmin.get_fields() bypasses get_fieldsets()
+    # entirely and returns almost every model field regardless of role. The
+    # actual change form — what get_form() builds — is what respects
+    # get_fieldsets(), so that is what to check.
+    person = Person.objects.create(last_name="Malong", first_name="Shan")
+    user = User.objects.create_user("ict", password="x", is_staff=True)
+    user.groups.add(Group.objects.get(name=groups.ICT))
+    admin = PersonAdmin(Person, AdminSite())
+    form = admin.get_form(request_for(user), person)
+    assert "user" in form.base_fields
+
+
+@pytest.mark.django_db
+def test_the_secretariat_does_not_see_the_user_field(db):
+    person = Person.objects.create(last_name="Santos", first_name="Rhea")
+    user = User.objects.create_user("sec2", password="x", is_staff=True)
+    user.groups.add(Group.objects.get(name=groups.SECRETARIAT))
+    admin = PersonAdmin(Person, AdminSite())
+    form = admin.get_form(request_for(user), person)
+    assert "user" not in form.base_fields
+
+
+@pytest.mark.django_db
+def test_a_chairperson_only_user_still_sees_exactly_five_fields(chair_setup):
+    """The ICT branch in get_fieldsets must be additive: it must not leak
+    the "user" field, or anything else, into the chairperson-only view.
+    """
+    user, _, _ = chair_setup
+    admin = PersonAdmin(Person, AdminSite())
+    assert tuple(admin.get_fields(request_for(user))) == CHAIRPERSON_FIELDS
+
+
+@pytest.mark.django_db
+def test_linking_a_person_to_a_user_unlocks_the_committee_roster(db):
+    """The end-to-end behaviour Defect 1 was blocking: before the fix,
+    nothing could set Person.user through the admin, so a chairperson's
+    roster was always empty. Here ICT links the login through the exact
+    form field the fix exposes, and the roster comes into view.
+    """
+    chair_person = Person.objects.create(last_name="Malong", first_name="Shan")
+    on_my_committee = Person.objects.create(last_name="Reyes", first_name="Manex")
+
+    ict_committee = Committee.objects.get(code="ict")
+    CommitteeMembership.objects.create(
+        committee=ict_committee, person=chair_person,
+        role=CommitteeRole.CHAIRPERSON, date_joined=JOINED,
+    )
+    CommitteeMembership.objects.create(
+        committee=ict_committee, person=on_my_committee,
+        role=CommitteeRole.MEMBER, date_joined=JOINED,
+    )
+
+    chair_user = User.objects.create_user("chair3", password="x", is_staff=True)
+    chair_user.groups.add(Group.objects.get(name=groups.CHAIRPERSON))
+
+    admin_obj = PersonAdmin(Person, AdminSite())
+    assert on_my_committee not in admin_obj.get_queryset(request_for(chair_user))
+
+    ict_user = User.objects.create_user("ict3", password="x", is_staff=True)
+    ict_user.groups.add(Group.objects.get(name=groups.ICT))
+
+    Form = admin_obj.get_form(request_for(ict_user), chair_person)
+    form = Form(
+        data={
+            "last_name": chair_person.last_name,
+            "first_name": chair_person.first_name,
+            "membership_status": chair_person.membership_status,
+            "user": chair_user.pk,
+        },
+        instance=chair_person,
+    )
+    assert form.is_valid(), form.errors
+    form.save()
+
+    chair_person.refresh_from_db()
+    assert chair_person.user_id == chair_user.pk
+    assert on_my_committee in admin_obj.get_queryset(request_for(chair_user))

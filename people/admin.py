@@ -3,7 +3,7 @@ from django.core.exceptions import PermissionDenied
 from simple_history.admin import SimpleHistoryAdmin
 
 from committees.models import CommitteeMembership, CommitteeRole
-from core.groups import is_chairperson_only
+from core.groups import is_chairperson_only, is_ict
 from core.numbering import next_member_no
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
@@ -64,7 +64,7 @@ class PersonAdmin(SimpleHistoryAdmin):
     list_filter = ("membership_status", "has_missing_data", "consent_given")
     search_fields = ("last_name", "first_name", "nickname", "member_no", "mobile_number")
     readonly_fields = ("status_changed_at", "has_missing_data")
-    autocomplete_fields = ("approved_by", "guardian")
+    autocomplete_fields = ("approved_by", "guardian", "user")
     inlines = (HouseholdMemberInline, CommitteeMembershipInline, FormScanInline)
     actions = ("assign_member_no",)
 
@@ -180,7 +180,12 @@ class PersonAdmin(SimpleHistoryAdmin):
     def get_fieldsets(self, request, obj=None):
         if is_chairperson_only(request.user):
             return ((None, {"fields": CHAIRPERSON_FIELDS}),)
-        return super().get_fieldsets(request, obj)
+        fieldsets = super().get_fieldsets(request, obj)
+        if is_ict(request.user):
+            # Linking a login is an ICT action (see core.groups.is_ict) — the
+            # Secretariat and everyone else get the fieldsets above, unchanged.
+            fieldsets = (*fieldsets, ("Login", {"fields": ("user",)}))
+        return fieldsets
 
     def get_inlines(self, request, obj):
         if is_chairperson_only(request.user):
