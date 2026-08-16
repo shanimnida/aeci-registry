@@ -80,3 +80,40 @@ def test_the_secretariat_sees_everyone(db):
     user.groups.add(Group.objects.get(name=groups.SECRETARIAT))
     admin = PersonAdmin(Person, AdminSite())
     assert admin.get_queryset(request_for(user)).count() == 1
+
+
+@pytest.mark.django_db
+def test_a_chairperson_cannot_read_history_for_their_own_roster(client, chair_setup):
+    user, mine, _ = chair_setup
+    client.force_login(user)
+    response = client.get(f"/admin/people/person/{mine.pk}/history/")
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_a_chairperson_cannot_read_history_for_a_stranger(client, chair_setup):
+    user, _, stranger = chair_setup
+    client.force_login(user)
+    response = client.get(f"/admin/people/person/{stranger.pk}/history/")
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_the_chairperson_changelist_hides_withheld_columns(client, chair_setup):
+    user, _, _ = chair_setup
+    client.force_login(user)
+    response = client.get("/admin/people/person/")
+    body = response.content.decode()
+    assert "column-member_no" not in body
+    assert "column-membership_status" not in body
+
+
+@pytest.mark.django_db
+def test_someone_who_left_the_committee_is_no_longer_visible(chair_setup):
+    user, mine, _ = chair_setup
+    membership = CommitteeMembership.objects.get(person=mine)
+    membership.date_left = TODAY - dt.timedelta(days=1)
+    membership.save()
+
+    admin_obj = PersonAdmin(Person, AdminSite())
+    assert mine not in admin_obj.get_queryset(request_for(user))

@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from simple_history.admin import SimpleHistoryAdmin
 
 from committees.models import CommitteeMembership, CommitteeRole
@@ -116,7 +117,7 @@ class PersonAdmin(SimpleHistoryAdmin):
     def full_name(self, obj):
         return obj.full_name
 
-    @admin.action(description="Assign member numbers")
+    @admin.action(description="Assign member numbers", permissions=["change"])
     def assign_member_no(self, request, queryset):
         count = assign_member_numbers(queryset)
         self.message_user(request, f"Assigned {count} member number(s).")
@@ -169,9 +170,12 @@ class PersonAdmin(SimpleHistoryAdmin):
             )
             .values_list("committee_id", flat=True)
         )
-        return queryset.filter(
-            committee_memberships__committee_id__in=chaired
-        ).distinct()
+        roster = (
+            CommitteeMembership.objects.active()
+            .filter(committee_id__in=chaired)
+            .values_list("person_id", flat=True)
+        )
+        return queryset.filter(pk__in=roster)
 
     def get_fields(self, request, obj=None):
         if is_chairperson_only(request.user):
@@ -192,6 +196,29 @@ class PersonAdmin(SimpleHistoryAdmin):
         if is_chairperson_only(request.user):
             return ()
         return super().get_inlines(request, obj)
+
+    def get_list_display(self, request):
+        if is_chairperson_only(request.user):
+            return ("full_name", "nickname", "mobile_number", "email")
+        return super().get_list_display(request)
+
+    def get_list_filter(self, request):
+        if is_chairperson_only(request.user):
+            return ()
+        return super().get_list_filter(request)
+
+    def history_view(self, request, object_id, extra_context=None):
+        # simple-history's history_view falls back to the raw history manager
+        # when get_queryset() hides the object, and renders a full field diff.
+        # A chairperson sees five fields; they get no history at all.
+        if is_chairperson_only(request.user):
+            raise PermissionDenied
+        return super().history_view(request, object_id, extra_context)
+
+    def history_form_view(self, request, object_id, version_id, extra_context=None):
+        if is_chairperson_only(request.user):
+            raise PermissionDenied
+        return super().history_form_view(request, object_id, version_id, extra_context)
 
 
 class HouseholdPersonInline(admin.TabularInline):
