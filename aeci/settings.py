@@ -286,6 +286,62 @@ BACKUP_TO_STORAGE = env.bool(
 )
 BACKUP_RETENTION_DAYS = env.int("BACKUP_RETENTION_DAYS", default=30)
 
+# Without this, Django's built-in default (an email to ADMINS, which this
+# project never configures — see django.utils.log.DEFAULT_LOGGING) sends
+# every unhandled 500 nowhere. A volunteer whose site breaks then has
+# nothing to look at. Writing to stdout instead is what the hosting
+# platform actually captures and lets you page through.
+#
+# Deliberately not a file: on a free-tier host the filesystem is wiped on
+# every redeploy and on idle spin-down (see the USE_S3_STORAGE comment
+# above for the same fact biting media storage), so a log file would
+# vanish before anyone read it.
+#
+# What this does NOT do, on purpose: the formatter below renders only
+# levelname/time/logger name/message. Django attaches the live
+# HttpRequest object to error LogRecords via extra={"request": request}
+# (see django.utils.log.log_response) specifically so a *request-aware*
+# handler — django.utils.log.AdminEmailHandler is the built-in example —
+# can pull GET/POST/META/cookies out of it for a detailed report. A plain
+# %(message)s-style formatter never references that attribute, so it is
+# simply inert on the record and nothing from the request body reaches
+# this stream. The path Django does log (e.g. "Internal Server Error:
+# /admin/people/person/42/change/") is request.path only, never the query
+# string, so filter/search values typed into the changelist URL don't
+# appear here either. A plain traceback prints call frames, not local
+# variable values, so member data would only leak into a log line if
+# application code put it into an exception message directly — none does
+# today. "django.request" is kept separate from "django" and does not
+# propagate, so the same 500 is not printed twice.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {
+            "format": "{asctime} {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "simple",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
+
 # Production security settings. Gated on DEBUG rather than a dedicated flag
 # because these must never be forgotten on a real deploy, and there is no
 # legitimate production configuration with DEBUG=True.

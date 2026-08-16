@@ -57,20 +57,53 @@ def test_a_chairperson_sees_only_their_own_committee(chair_setup):
     assert stranger not in visible
 
 
-@pytest.mark.django_db
-def test_a_chairperson_sees_only_five_fields(chair_setup):
-    user, _, _ = chair_setup
-    admin = PersonAdmin(Person, AdminSite())
-    assert tuple(admin.get_fields(request_for(user))) == CHAIRPERSON_FIELDS
+#: Field name -> the label Django auto-derives for it (name.replace("_", " "),
+#: capfirst'd) and what Unfold's readonly field template actually renders —
+#: see test_a_chairperson_sees_only_five_fields for why the raw field name
+#: itself never appears in the markup a chairperson receives.
+FIELD_LABELS = {
+    "first_name": "First name",
+    "last_name": "Last name",
+    "nickname": "Nickname",
+    "mobile_number": "Mobile number",
+    "email": "Email",
+    "home_address": "Home address",
+    "date_of_birth": "Date of birth",
+    "civil_status": "Civil status",
+    "notes": "Notes",
+    "user": "User",
+}
 
 
 @pytest.mark.django_db
-def test_a_chairperson_never_sees_an_address_or_birthdate(chair_setup):
-    user, _, _ = chair_setup
-    admin = PersonAdmin(Person, AdminSite())
-    fields = set(admin.get_fields(request_for(user)))
+def test_a_chairperson_sees_only_five_fields(client, chair_setup):
+    # get_fields() is not the right probe here: Django only calls it when
+    # `fieldsets` is undefined. PersonAdmin defines `fieldsets`, so the
+    # actual change form is built from get_fieldsets() instead — asserting
+    # against get_fields() would pass even if get_fieldsets() leaked every
+    # field. Fetch the rendered page a chairperson would actually receive.
+    #
+    # The Chairperson group holds view_person but never change_person (see
+    # core/migrations/0002_create_groups.py), so this always renders as a
+    # read-only page: Unfold's readonly field template prints a label like
+    # ">First name<", never a `name="first_name"` form control. That's the
+    # marker to look for, not an input's name attribute.
+    user, mine, _ = chair_setup
+    client.force_login(user)
+    response = client.get(f"/admin/people/person/{mine.pk}/change/")
+    body = response.content.decode()
+    for field in CHAIRPERSON_FIELDS:
+        assert f">{FIELD_LABELS[field]}<" in body
+
+
+@pytest.mark.django_db
+def test_a_chairperson_never_sees_an_address_or_birthdate(client, chair_setup):
+    user, mine, _ = chair_setup
+    client.force_login(user)
+    response = client.get(f"/admin/people/person/{mine.pk}/change/")
+    body = response.content.decode()
     for hidden in ("home_address", "date_of_birth", "civil_status", "notes"):
-        assert hidden not in fields
+        assert f">{FIELD_LABELS[hidden]}<" not in body
 
 
 @pytest.mark.django_db
@@ -106,6 +139,49 @@ def test_the_chairperson_changelist_hides_withheld_columns(client, chair_setup):
     body = response.content.decode()
     assert "column-member_no" not in body
     assert "column-membership_status" not in body
+
+
+@pytest.mark.django_db
+def test_a_chairperson_cannot_filter_the_changelist_by_a_withheld_field(client, chair_setup):
+    """Defect 1: rendering hides the field, but nothing stopped a
+    ?date_of_birth__year=1985-style querystring filter from reading it back
+    out through which rows appear. That has to be refused at the URL layer,
+    not merely left off the page — a binary search over repeated requests
+    would otherwise recover a birthdate or an address one bit at a time.
+    """
+    user, _, _ = chair_setup
+    client.force_login(user)
+    response = client.get(
+        "/admin/people/person/", {"date_of_birth__year": "1985"}
+    )
+    assert response.status_code == 400
+
+    response = client.get(
+        "/admin/people/person/", {"home_address__icontains": "Pines"}
+    )
+    assert response.status_code == 400
+
+    response = client.get(
+        "/admin/people/person/", {"civil_status__exact": "MARRIED"}
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_a_chairperson_can_still_filter_the_changelist_by_a_permitted_field(
+    client, chair_setup
+):
+    """The fix for Defect 1 must not be a blanket lockout: filtering on one
+    of the five permitted fields has to keep working.
+    """
+    user, mine, _ = chair_setup
+    client.force_login(user)
+    response = client.get(
+        "/admin/people/person/", {"first_name__icontains": mine.first_name}
+    )
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert mine.last_name in body
 
 
 @pytest.mark.django_db
@@ -145,13 +221,21 @@ def test_the_secretariat_does_not_see_the_user_field(db):
 
 
 @pytest.mark.django_db
-def test_a_chairperson_only_user_still_sees_exactly_five_fields(chair_setup):
+def test_a_chairperson_only_user_still_sees_exactly_five_fields(client, chair_setup):
     """The ICT branch in get_fieldsets must be additive: it must not leak
     the "user" field, or anything else, into the chairperson-only view.
+
+    Checked against the rendered page, not get_fields() — see
+    test_a_chairperson_sees_only_five_fields for why that probe is wrong
+    once fieldsets is defined.
     """
-    user, _, _ = chair_setup
-    admin = PersonAdmin(Person, AdminSite())
-    assert tuple(admin.get_fields(request_for(user))) == CHAIRPERSON_FIELDS
+    user, mine, _ = chair_setup
+    client.force_login(user)
+    response = client.get(f"/admin/people/person/{mine.pk}/change/")
+    body = response.content.decode()
+    for field in CHAIRPERSON_FIELDS:
+        assert f">{FIELD_LABELS[field]}<" in body
+    assert f">{FIELD_LABELS['user']}<" not in body
 
 
 @pytest.mark.django_db

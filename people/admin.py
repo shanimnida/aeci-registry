@@ -1,11 +1,12 @@
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
+from django.db.models.constants import LOOKUP_SEP
 from simple_history.admin import SimpleHistoryAdmin
 from unfold.admin import ModelAdmin, TabularInline
 
 from committees.models import CommitteeMembership, CommitteeRole
 from core.groups import is_chairperson_only, is_ict
-from core.numbering import next_member_no
+from core.numbering import next_member_no, reconcile_member_sequence
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
 
@@ -26,7 +27,16 @@ def find_possible_duplicates(person):
 
 
 def assign_member_numbers(queryset):
-    """Give a MEM- number to members who lack one. Never overwrites."""
+    """Give a MEM- number to members who lack one. Never overwrites.
+
+    Reconciles the MEM sequence against any hand-entered numbers first, so
+    an allocation can never collide with a number the Secretariat already
+    typed in from a paper form. Called once per invocation (not once per
+    row) since reconciliation is a full scan of Person.member_no — see
+    core.numbering.reconcile_member_sequence for why that cost is fine here
+    but would not be inside next_member_no() itself.
+    """
+    reconcile_member_sequence()
     assigned = 0
     for person in queryset.filter(
         member_no__isnull=True, membership_status=MembershipStatus.MEMBER
@@ -202,6 +212,24 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
         if is_chairperson_only(request.user):
             return ()
         return super().get_list_filter(request)
+
+    def lookup_allowed(self, lookup, value, request=None):
+        # Spec D12 closes here, not just in what's rendered: get_fields,
+        # get_fieldsets, get_list_display and get_list_filter all hide the
+        # withheld fields from view, but Django's changelist applies any
+        # ?field__lookup=value querystring filter *before* rendering, and by
+        # default a direct (non-relational) model field is always an allowed
+        # lookup regardless of list_filter. Left alone, a chairperson could
+        # never see "date_of_birth" on the page yet still binary-search it
+        # via repeated ?date_of_birth__year=1985-style requests — nothing
+        # displayed, everything disclosed. So for a chairperson-only user,
+        # only lookups rooted in one of the five permitted fields may pass;
+        # everything else is refused before it ever reaches the queryset.
+        if request is not None and is_chairperson_only(request.user):
+            root_field = lookup.split(LOOKUP_SEP, 1)[0]
+            if root_field not in CHAIRPERSON_FIELDS:
+                return False
+        return super().lookup_allowed(lookup, value, request)
 
     def history_view(self, request, object_id, extra_context=None):
         # simple-history's history_view falls back to the raw history manager

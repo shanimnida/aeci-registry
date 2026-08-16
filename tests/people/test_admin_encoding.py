@@ -38,6 +38,12 @@ def test_a_person_does_not_match_themselves():
 
 @pytest.mark.django_db
 def test_member_numbers_are_assigned_in_sequence_and_never_overwritten():
+    """Day-one workflow: the Secretariat has already typed MEM-0099 in by
+    hand off a paper form before anyone runs "Assign member numbers". The
+    allocator must continue past it, not collide with it — MEM-0001 would
+    be a second person holding the same number as "existing", which is the
+    bug this test used to encode as expected behaviour.
+    """
     from people.admin import assign_member_numbers
 
     existing = Person.objects.create(
@@ -56,7 +62,39 @@ def test_member_numbers_are_assigned_in_sequence_and_never_overwritten():
     existing.refresh_from_db()
     fresh.refresh_from_db()
     assert existing.member_no == "MEM-0099"
-    assert fresh.member_no == "MEM-0001"
+    assert fresh.member_no == "MEM-0100"
+
+
+@pytest.mark.django_db
+def test_assign_member_numbers_reconciles_hand_entered_numbers_on_its_own():
+    """The Secretariat must not have to remember to run the separate
+    "reconcile_member_sequence" management command before assigning: the
+    admin action itself must be safe against hand-entered numbers written
+    in any order, including ones higher than anything the sequence has
+    allocated so far.
+    """
+    from people.admin import assign_member_numbers
+
+    Person.objects.create(
+        last_name="Ureta", first_name="Jomar",
+        membership_status=MembershipStatus.MEMBER,
+        member_no="MEM-0150",
+    )
+    first_fresh = Person.objects.create(
+        last_name="Bilango", first_name="Alpha",
+        membership_status=MembershipStatus.MEMBER,
+    )
+    second_fresh = Person.objects.create(
+        last_name="Cruz", first_name="Beta",
+        membership_status=MembershipStatus.MEMBER,
+    )
+
+    assign_member_numbers(Person.objects.all())
+
+    first_fresh.refresh_from_db()
+    second_fresh.refresh_from_db()
+    assigned = {first_fresh.member_no, second_fresh.member_no}
+    assert assigned == {"MEM-0151", "MEM-0152"}
 
 
 @pytest.mark.django_db
