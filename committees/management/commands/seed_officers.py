@@ -12,6 +12,7 @@ REQUIRED_COLUMNS = {
     "last_name",
     "first_name",
     "nickname",
+    "membership_status",
     "committee_code",
     "role",
     "start_date",
@@ -36,12 +37,17 @@ class Command(BaseCommand):
         "first name or nickname (e.g. MJ, Jemuel, JM, Fredalyn, Diego, "
         "Juliet) are deliberately absent from the CSV pending manual name "
         "resolution by the ICT Committee -- this command never guesses a "
-        "surname to fill a row. Every Person and CommitteeMembership is "
-        "validated with full_clean() before it is saved, so a row that "
-        "would break a business rule (a second Chairperson for a committee, "
-        "more than two self-selected committees, and so on) is reported by "
-        "row number and skipped rather than silently applied or half-saved; "
-        "the command exits non-zero if any row failed."
+        "surname to fill a row. membership_status is likewise a required "
+        "column the ICT Committee states, never a default this command "
+        "picks -- a new officer is created at whatever status the CSV "
+        "names, and an officer who already exists on file keeps their "
+        "recorded status untouched no matter what the CSV says. Every "
+        "Person and CommitteeMembership is validated with full_clean() "
+        "before it is saved, so a row that would break a business rule (a "
+        "second Chairperson for a committee, more than two self-selected "
+        "committees, and so on) is reported by row number and skipped "
+        "rather than silently applied or half-saved; the command exits "
+        "non-zero if any row failed."
     )
 
     def add_arguments(self, parser):
@@ -69,8 +75,8 @@ class Command(BaseCommand):
             if missing_columns:
                 raise CommandError(
                     f"{path} is missing column(s): {', '.join(sorted(missing_columns))}. "
-                    f"Expected header: last_name,first_name,nickname,committee_code,"
-                    f"role,start_date"
+                    f"Expected header: last_name,first_name,nickname,membership_status,"
+                    f"committee_code,role,start_date"
                 )
             rows = list(reader)
 
@@ -123,6 +129,7 @@ class Command(BaseCommand):
         last_name = (row.get("last_name") or "").strip()
         first_name = (row.get("first_name") or "").strip()
         nickname = (row.get("nickname") or "").strip()
+        membership_status = (row.get("membership_status") or "").strip()
         committee_code = (row.get("committee_code") or "").strip()
         role = (row.get("role") or "").strip()
         start_date = (row.get("start_date") or "").strip()
@@ -141,8 +148,35 @@ class Command(BaseCommand):
         person_created = False
         nickname_update = None
         if person is None:
+            # membership_status comes from the CSV, not a default this
+            # command picks -- the ICT Committee states the fact (their
+            # source is the Board minutes that name these people as
+            # chairpersons), the code only records it. A blank value is
+            # rejected by Person.full_clean() below rather than silently
+            # falling back to the model's own RELATED default: RELATED
+            # would misdescribe an actual chairperson, and any default this
+            # command chose on its own would be the software deciding
+            # membership, which is exactly what it must never do.
+            #
+            # Setting membership_status directly on a *new* instance does
+            # not require approved_by even when the value is MEMBER: Person
+            # only demands one when an EXISTING record (loaded from the
+            # database, so _loaded_status is set) changes to MEMBER. A
+            # brand-new row has no _loaded_status, so this is "creating a
+            # record already at MEMBER" -- the documented, deliberate path
+            # for encoding a backlog whose approving meeting predates this
+            # system. See people/models.py Person.clean().
+            #
+            # This only ever applies to a person being created for the
+            # first time. An existing person's membership_status is never
+            # touched here (only their nickname, below, and only when the
+            # CSV supplies a new one) -- a re-run must not promote anyone
+            # who is already on file, silently or otherwise.
             person = Person(
-                last_name=last_name, first_name=first_name, nickname=nickname
+                last_name=last_name,
+                first_name=first_name,
+                nickname=nickname,
+                membership_status=membership_status,
             )
             person.full_clean()
             person.save()

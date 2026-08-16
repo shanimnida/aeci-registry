@@ -176,10 +176,35 @@ class CommitteeMembership(TimeStampedModel):
 
     def clean(self):
         super().clean()
+        self._check_dates_are_ordered()
         self._check_function_belongs_to_committee()
         self._check_self_selected_limit()
         self._check_single_chairperson()
         self._check_oversight_is_on_the_board()
+
+    def _check_dates_are_ordered(self):
+        """Mirrors Appointment.clean(): a transposed date must be rejected here too.
+
+        Without this, a `date_joined` typed after `date_left` (a simple
+        transposition, or a slip on a date picker) creates a row that
+        active() excludes -- whichever date is wrong pushes it outside the
+        active window -- and that _has_ended() treats as already finished.
+        It would then count toward neither the two-committee cap nor the
+        one-chairperson rule, and appear on no active roster: invisible,
+        and exempt from every rule this model enforces, with nothing
+        telling the person who typed it.
+
+        A same-day join and leave is deliberately NOT rejected here:
+        date_joined == date_left is not reversed, and active() already
+        treats a membership ending today as still active today (see
+        test_leaving_a_committee_frees_a_slot's semantics), so a
+        zero-duration membership is a coherent, permitted case -- not the
+        typo this check exists to catch.
+        """
+        if self.date_left and self.date_left < self.date_joined:
+            raise ValidationError(
+                {"date_left": "The end date cannot precede the start date."}
+            )
 
     def _has_ended(self) -> bool:
         """True only once the membership is genuinely over.

@@ -124,6 +124,49 @@ def test_a_future_departure_does_not_free_a_slot_early(person):
 
 
 @pytest.mark.django_db
+def test_a_date_left_before_date_joined_is_rejected(person):
+    """Gap 1: a transposed date must not create a row that active() treats
+    as not-yet-started and _has_ended() treats as already-over at the same
+    time -- exempt from both the two-committee cap and the one-chairperson
+    rule, and invisible on every active roster.
+    """
+    backwards = CommitteeMembership(
+        committee=Committee.objects.get(code="ict"),
+        person=person,
+        role=CommitteeRole.MEMBER,
+        date_joined=TODAY,
+        date_left=TODAY - dt.timedelta(days=10),
+    )
+    with pytest.raises(ValidationError) as exc:
+        backwards.full_clean()
+    assert "precede" in str(exc.value).lower()
+
+
+@pytest.mark.django_db
+def test_a_same_day_join_and_leave_is_permitted(person):
+    """Same-day is a real, zero-duration membership, not the typo the
+    ordering check exists to catch: active() already treats a membership
+    ending today as active today, so date_joined == date_left is not
+    'reversed' and must be accepted.
+    """
+    same_day = CommitteeMembership(
+        committee=Committee.objects.get(code="ict"),
+        person=person,
+        role=CommitteeRole.MEMBER,
+        date_joined=JOINED,
+        date_left=JOINED,
+    )
+    same_day.full_clean()
+    same_day.save()
+    assert CommitteeMembership.objects.active(on=JOINED).filter(pk=same_day.pk).exists()
+    assert not (
+        CommitteeMembership.objects.active(on=JOINED + dt.timedelta(days=1))
+        .filter(pk=same_day.pk)
+        .exists()
+    )
+
+
+@pytest.mark.django_db
 def test_a_future_departure_does_not_permit_a_second_chairperson(person):
     other = Person.objects.create(last_name="Daclitan", first_name="Kathleen")
     join(person, "ict", role=CommitteeRole.CHAIRPERSON)
