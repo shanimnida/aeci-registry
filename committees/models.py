@@ -1,4 +1,8 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
+from django.utils import timezone
+from simple_history.models import HistoricalRecords
 
 from core.models import TimeStampedModel
 
@@ -39,3 +43,68 @@ class CommitteeFunction(models.Model):
 
     def __str__(self):
         return f"{self.committee.name} — {self.name}"
+
+
+class Position(models.Model):
+    """A church-level office, distinct from committee membership."""
+
+    name = models.CharField(max_length=120)
+    code = models.SlugField(unique=True)
+    is_unique_holder = models.BooleanField(
+        default=True, help_text="Whether only one person may hold this at a time."
+    )
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
+class AppointmentQuerySet(models.QuerySet):
+    def active(self, on=None):
+        on = on or timezone.localdate()
+        return self.filter(start_date__lte=on).filter(
+            Q(end_date__isnull=True) | Q(end_date__gte=on)
+        )
+
+
+class Appointment(TimeStampedModel):
+    person = models.ForeignKey(
+        "people.Person", on_delete=models.PROTECT, related_name="appointments"
+    )
+    position = models.ForeignKey(
+        Position, on_delete=models.PROTECT, related_name="appointments"
+    )
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+
+    history = HistoricalRecords()
+    objects = AppointmentQuerySet.as_manager()
+
+    class Meta:
+        ordering = ("-start_date",)
+
+    def __str__(self):
+        return f"{self.person.full_name} — {self.position.name}"
+
+    def clean(self):
+        super().clean()
+        if self.end_date and self.end_date < self.start_date:
+            raise ValidationError({"end_date": "The end date cannot precede the start date."})
+        if not self.position_id or not self.position.is_unique_holder:
+            return
+
+        others = Appointment.objects.filter(position=self.position).exclude(pk=self.pk)
+        for other in others:
+            starts_before_other_ends = (
+                other.end_date is None or self.start_date <= other.end_date
+            )
+            other_starts_before_this_ends = (
+                self.end_date is None or other.start_date <= self.end_date
+            )
+            if starts_before_other_ends and other_starts_before_this_ends:
+                raise ValidationError(
+                    f"{other.person.full_name} already holds {self.position.name} "
+                    f"over these dates. End that appointment first."
+                )
