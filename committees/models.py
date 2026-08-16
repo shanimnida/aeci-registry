@@ -181,6 +181,15 @@ class CommitteeMembership(TimeStampedModel):
         self._check_single_chairperson()
         self._check_oversight_is_on_the_board()
 
+    def _has_ended(self) -> bool:
+        """True only once the membership is genuinely over.
+
+        active() counts a membership ending today as still active, so a guard
+        keyed on `self.date_left` being merely non-null would let a future
+        departure date skip the check while the row is still live.
+        """
+        return self.date_left is not None and self.date_left < timezone.localdate()
+
     def _check_function_belongs_to_committee(self):
         if self.function_id and self.function.committee_id != self.committee_id:
             raise ValidationError(
@@ -188,7 +197,7 @@ class CommitteeMembership(TimeStampedModel):
             )
 
     def _check_self_selected_limit(self):
-        if self.role in self.APPOINTED_ROLES or self.date_left:
+        if self.role in self.APPOINTED_ROLES or self._has_ended():
             return
         if not self.committee.is_self_selectable:
             return
@@ -207,7 +216,7 @@ class CommitteeMembership(TimeStampedModel):
             )
 
     def _check_single_chairperson(self):
-        if self.role != CommitteeRole.CHAIRPERSON or self.date_left:
+        if self.role != CommitteeRole.CHAIRPERSON or self._has_ended():
             return
         clash = (
             CommitteeMembership.objects.active()

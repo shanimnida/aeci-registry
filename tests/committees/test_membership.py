@@ -106,3 +106,33 @@ def test_oversight_requires_a_board_appointment(person):
     )
     join(person, "ict", role=CommitteeRole.OVERSIGHT)
     assert CommitteeMembership.objects.filter(role=CommitteeRole.OVERSIGHT).count() == 1
+
+
+@pytest.mark.django_db
+def test_a_future_departure_does_not_free_a_slot_early(person):
+    join(person, "ict")
+    join(person, "events")
+    third = CommitteeMembership(
+        committee=Committee.objects.get(code="food"),
+        person=person,
+        role=CommitteeRole.MEMBER,
+        date_joined=JOINED,
+        date_left=TODAY + dt.timedelta(days=30),
+    )
+    with pytest.raises(ValidationError):
+        third.full_clean()
+
+
+@pytest.mark.django_db
+def test_a_future_departure_does_not_permit_a_second_chairperson(person):
+    other = Person.objects.create(last_name="Daclitan", first_name="Kathleen")
+    join(person, "ict", role=CommitteeRole.CHAIRPERSON)
+    clash = CommitteeMembership(
+        committee=Committee.objects.get(code="ict"),
+        person=other,
+        role=CommitteeRole.CHAIRPERSON,
+        date_joined=JOINED,
+        date_left=TODAY + dt.timedelta(days=30),
+    )
+    with pytest.raises(ValidationError):
+        clash.full_clean()
