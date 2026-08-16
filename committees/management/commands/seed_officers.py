@@ -49,7 +49,11 @@ class Command(BaseCommand):
                 f"{','.join(sorted(REQUIRED_COLUMNS))}"
             )
 
-        with path.open(encoding="utf-8", newline="") as handle:
+        # utf-8-sig strips a leading byte-order mark when present (Excel's
+        # "CSV UTF-8" export writes one, which would otherwise turn
+        # "last_name" into "﻿last_name" and make a present column look
+        # missing) and is harmless when there is no BOM at all.
+        with path.open(encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             missing_columns = REQUIRED_COLUMNS - set(reader.fieldnames or [])
             if missing_columns:
@@ -62,18 +66,24 @@ class Command(BaseCommand):
 
         created_people = created_roles = 0
         row_errors = []
+        nickname_updates = []
 
         # Row 1 is the header, so the first data row is line 2 -- matching
         # what the ICT Committee sees if they open the CSV in a spreadsheet.
         for line_no, row in enumerate(rows, start=2):
             try:
                 with transaction.atomic():
-                    person_created, role_created = self._seed_row(row)
+                    person_created, role_created, nickname_update = self._seed_row(row)
             except ValidationError as exc:
                 row_errors.append(self._describe_error(line_no, row, exc))
                 continue
             created_people += int(person_created)
             created_roles += int(role_created)
+            if nickname_update:
+                nickname_updates.append(nickname_update)
+
+        for update in nickname_updates:
+            self.stdout.write(update)
 
         for error in row_errors:
             self.stderr.write(self.style.ERROR(error))
@@ -119,6 +129,7 @@ class Command(BaseCommand):
             last_name=last_name, first_name=first_name
         ).first()
         person_created = False
+        nickname_update = None
         if person is None:
             person = Person(
                 last_name=last_name, first_name=first_name, nickname=nickname
@@ -126,12 +137,47 @@ class Command(BaseCommand):
             person.full_clean()
             person.save()
             person_created = True
+        elif nickname and person.nickname != nickname:
+            # The CSV exists precisely so nicknames get resolved to full
+            # names over time -- apply a corrected value on a re-run
+            # instead of silently ignoring it. A blank CSV nickname is not
+            # an instruction to erase a stored one, so this only fires
+            # when the row actually supplies a different, non-empty value.
+            old_nickname = person.nickname
+            person.nickname = nickname
+            person.full_clean()
+            person.save(update_fields=["nickname"])
+            nickname_update = (
+                f"{person.full_name}: nickname changed from "
+                f"{old_nickname!r} to {nickname!r}."
+            )
 
         role_created = False
         existing_membership = CommitteeMembership.objects.filter(
             person=person, committee=committee, role=role
         ).exists()
         if not existing_membership:
+            # A person already active in this same role on a *different*
+            # committee is most likely a CSV row that got its
+            # committee_code edited to move them -- not an instruction to
+            # give them a second simultaneous role. Editing a spreadsheet
+            # is not a reliable signal to end their existing membership,
+            # so refuse rather than silently create a duplicate; the
+            # operator ends the old one in the admin and re-runs.
+            conflict = (
+                CommitteeMembership.objects.active()
+                .filter(person=person, role=role)
+                .exclude(committee=committee)
+                .first()
+            )
+            if conflict:
+                raise ValidationError(
+                    f"{person.full_name} already holds an active {role} "
+                    f"membership on {conflict.committee.name}. This row "
+                    f"would give them a second {role} on {committee.name} "
+                    f"at the same time. End the {conflict.committee.name} "
+                    f"membership in the admin first, then re-run."
+                )
             membership = CommitteeMembership(
                 person=person,
                 committee=committee,
@@ -142,7 +188,7 @@ class Command(BaseCommand):
             membership.save()
             role_created = True
 
-        return person_created, role_created
+        return person_created, role_created, nickname_update
 
     def _describe_error(self, line_no, row, exc):
         who = " ".join(

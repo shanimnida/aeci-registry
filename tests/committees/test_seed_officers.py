@@ -136,3 +136,123 @@ def test_the_shipped_officers_csv_imports_cleanly():
     call_command("seed_officers", "--path", "data/officers.csv")
     assert Person.objects.count() == 6
     assert CommitteeMembership.objects.filter(role=CommitteeRole.CHAIRPERSON).count() == 6
+
+
+@pytest.mark.django_db
+def test_a_bom_prefixed_csv_from_excel_imports_cleanly(tmp_path):
+    """Excel's "CSV UTF-8" export writes a byte-order mark. Opened as plain
+    utf-8 that turns the header's first column into '﻿last_name',
+    which used to make a genuinely present column look missing.
+    """
+    path = tmp_path / "officers_from_excel.csv"
+    path.write_text(CSV, encoding="utf-8-sig")
+
+    call_command("seed_officers", "--path", str(path))
+
+    assert Person.objects.count() == 3
+    assert CommitteeMembership.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_moving_an_officer_to_a_new_committee_is_refused_not_duplicated(tmp_path, capsys):
+    """Editing committee_code on an existing officer's row must not create
+    a second active membership in the same role -- that would leave them
+    Chairperson of two committees at once with nothing rejecting it,
+    because the single-chairperson rule guards the committee, not the
+    person. The command must refuse instead of guessing that the old
+    membership should be closed.
+    """
+    original = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Malong,Shan Albert,Shan,ict,CHAIRPERSON,2026-07-05\n",
+        name="original.csv",
+    )
+    call_command("seed_officers", "--path", str(original))
+
+    moved = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Malong,Shan Albert,Shan,events,CHAIRPERSON,2026-07-06\n",
+        name="moved.csv",
+    )
+
+    with pytest.raises(CommandError) as exc:
+        call_command("seed_officers", "--path", str(moved))
+    assert "1 of 1 row(s) failed" in str(exc.value)
+
+    # Still only the original ICT membership -- no second active
+    # Chairperson row was created on Events.
+    memberships = CommitteeMembership.objects.filter(person__last_name="Malong")
+    assert memberships.count() == 1
+    assert memberships.get().committee.code == "ict"
+
+    stderr = capsys.readouterr().err
+    assert "Row 2" in stderr
+    assert "ICT" in stderr
+    assert "Events" in stderr
+
+
+@pytest.mark.django_db
+def test_a_nickname_correction_on_a_rerun_updates_the_person(tmp_path, capsys):
+    """The CSV exists so that a nickname-only officer can be resolved to a
+    full name over time. Editing the nickname column and re-running must
+    actually apply the correction, not silently do nothing.
+    """
+    first_pass = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Malong,Shan Albert,,ict,CHAIRPERSON,2026-07-05\n",
+        name="first.csv",
+    )
+    call_command("seed_officers", "--path", str(first_pass))
+    person = Person.objects.get(last_name="Malong")
+    assert person.nickname == ""
+
+    corrected = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Malong,Shan Albert,Shan,ict,CHAIRPERSON,2026-07-05\n",
+        name="corrected.csv",
+    )
+    call_command("seed_officers", "--path", str(corrected))
+
+    person.refresh_from_db()
+    assert person.nickname == "Shan"
+
+    stdout = capsys.readouterr().out
+    assert "nickname" in stdout.lower()
+    assert "Shan" in stdout
+
+    # Idempotent: running the identical corrected CSV again does not
+    # create a duplicate person or membership, and reports no further
+    # nickname change.
+    call_command("seed_officers", "--path", str(corrected))
+    assert Person.objects.count() == 1
+    assert CommitteeMembership.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_a_blank_csv_nickname_does_not_erase_an_existing_one(tmp_path):
+    """Absence of a nickname in the CSV is not an instruction to erase a
+    previously resolved one -- a spreadsheet row left blank should not
+    regress data that was already fixed.
+    """
+    with_nickname = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Malong,Shan Albert,Shan,ict,CHAIRPERSON,2026-07-05\n",
+        name="with_nickname.csv",
+    )
+    call_command("seed_officers", "--path", str(with_nickname))
+
+    blank_nickname = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Malong,Shan Albert,,ict,CHAIRPERSON,2026-07-05\n",
+        name="blank_nickname.csv",
+    )
+    call_command("seed_officers", "--path", str(blank_nickname))
+
+    person = Person.objects.get(last_name="Malong")
+    assert person.nickname == "Shan"
