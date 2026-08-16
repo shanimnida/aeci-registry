@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from committees.models import Committee, CommitteeMembership
+from committees.models import Committee, CommitteeMembership, CommitteeRole
 from people.models import Person
 
 REQUIRED_COLUMNS = {
@@ -16,6 +16,16 @@ REQUIRED_COLUMNS = {
     "role",
     "start_date",
 }
+
+# Holding two of these at once is the anomaly worth stopping a human to
+# look at -- a spreadsheet's committee_code cell most likely got edited to
+# move someone. MEMBER and OVERSIGHT are deliberately excluded: a second
+# active MEMBER role on a different self-selectable committee is legal
+# (the two-committee cap in CommitteeMembership.clean() already allows and
+# enforces it), and OVERSIGHT has its own active-Board-appointment rule.
+# The model is the authority on what's valid; this command only catches
+# the one case the model's per-committee rules can't see on their own.
+ROLES_LIMITED_TO_ONE_COMMITTEE = {CommitteeRole.CHAIRPERSON, CommitteeRole.CO_CHAIR}
 
 
 class Command(BaseCommand):
@@ -156,14 +166,15 @@ class Command(BaseCommand):
         existing_membership = CommitteeMembership.objects.filter(
             person=person, committee=committee, role=role
         ).exists()
-        if not existing_membership:
+        if not existing_membership and role in ROLES_LIMITED_TO_ONE_COMMITTEE:
             # A person already active in this same role on a *different*
             # committee is most likely a CSV row that got its
             # committee_code edited to move them -- not an instruction to
             # give them a second simultaneous role. Editing a spreadsheet
             # is not a reliable signal to end their existing membership,
             # so refuse rather than silently create a duplicate; the
-            # operator ends the old one in the admin and re-runs.
+            # operator ends the old one in the admin and re-runs. Scoped
+            # to CHAIRPERSON/CO_CHAIR only -- see ROLES_LIMITED_TO_ONE_COMMITTEE.
             conflict = (
                 CommitteeMembership.objects.active()
                 .filter(person=person, role=role)
@@ -171,13 +182,16 @@ class Command(BaseCommand):
                 .first()
             )
             if conflict:
+                role_label = dict(CommitteeRole.choices).get(role, role)
                 raise ValidationError(
-                    f"{person.full_name} already holds an active {role} "
-                    f"membership on {conflict.committee.name}. This row "
-                    f"would give them a second {role} on {committee.name} "
-                    f"at the same time. End the {conflict.committee.name} "
-                    f"membership in the admin first, then re-run."
+                    f"{person.full_name} already holds an active "
+                    f"{role_label} membership on {conflict.committee.name}. "
+                    f"This row would give them a second {role_label} at "
+                    f"the same time (on {committee.name}). End the "
+                    f"{conflict.committee.name} membership in the admin "
+                    f"first, then re-run."
                 )
+        if not existing_membership:
             membership = CommitteeMembership(
                 person=person,
                 committee=committee,

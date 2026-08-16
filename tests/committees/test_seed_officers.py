@@ -256,3 +256,93 @@ def test_a_blank_csv_nickname_does_not_erase_an_existing_one(tmp_path):
 
     person = Person.objects.get(last_name="Malong")
     assert person.nickname == "Shan"
+
+
+@pytest.mark.django_db
+def test_a_second_self_selected_member_role_is_accepted_not_refused(tmp_path):
+    """The moved-officer conflict check is scoped to CHAIRPERSON/CO_CHAIR
+    only -- a second active MEMBER role on a different self-selectable
+    committee is explicitly legal (the two-committee cap), so this
+    command must let the row through rather than refusing it itself.
+    """
+    first = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Cruz,Ana,,ict,MEMBER,2026-07-05\n",
+        name="first.csv",
+    )
+    call_command("seed_officers", "--path", str(first))
+
+    second = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Cruz,Ana,,events,MEMBER,2026-07-06\n",
+        name="second.csv",
+    )
+    call_command("seed_officers", "--path", str(second))
+
+    memberships = CommitteeMembership.objects.filter(
+        person__last_name="Cruz", role=CommitteeRole.MEMBER
+    )
+    assert memberships.count() == 2
+    assert set(memberships.values_list("committee__code", flat=True)) == {
+        "ict",
+        "events",
+    }
+
+
+@pytest.mark.django_db
+def test_a_third_self_selected_member_role_is_rejected_by_the_models_cap(
+    tmp_path, capsys
+):
+    """A third MEMBER committee must still be refused -- but by
+    CommitteeMembership.clean()'s own two-committee cap, not by this
+    command's CHAIRPERSON/CO_CHAIR-only conflict check. Proven by checking
+    which error text comes back: the cap's "up to two", not the command's
+    "already holds an active" conflict message.
+    """
+    call_command(
+        "seed_officers",
+        "--path",
+        str(
+            write_csv(
+                tmp_path,
+                "last_name,first_name,nickname,committee_code,role,start_date\n"
+                "Cruz,Ana,,ict,MEMBER,2026-07-05\n",
+                name="first.csv",
+            )
+        ),
+    )
+    call_command(
+        "seed_officers",
+        "--path",
+        str(
+            write_csv(
+                tmp_path,
+                "last_name,first_name,nickname,committee_code,role,start_date\n"
+                "Cruz,Ana,,events,MEMBER,2026-07-06\n",
+                name="second.csv",
+            )
+        ),
+    )
+
+    third = write_csv(
+        tmp_path,
+        "last_name,first_name,nickname,committee_code,role,start_date\n"
+        "Cruz,Ana,,food,MEMBER,2026-07-07\n",
+        name="third.csv",
+    )
+    with pytest.raises(CommandError) as exc:
+        call_command("seed_officers", "--path", str(third))
+    assert "1 of 1 row(s) failed" in str(exc.value)
+
+    stderr = capsys.readouterr().err
+    assert "up to two" in stderr.lower()
+    assert "already holds an active" not in stderr
+
+    assert (
+        CommitteeMembership.objects.filter(
+            person__last_name="Cruz", role=CommitteeRole.MEMBER
+        ).count()
+        == 2
+    )
