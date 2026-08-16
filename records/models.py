@@ -91,6 +91,15 @@ class PurgeRecord(models.Model):
     person_label = models.CharField(max_length=220)
     fields_cleared = models.TextField()
     history_rows_scrubbed = models.IntegerField(default=0)
+    scan_files_removed = models.IntegerField(
+        default=0,
+        help_text=(
+            "Number of FormScan images deleted from storage for this person. "
+            "The FormScan rows themselves are kept -- only the photograph is "
+            "removed -- so this count is the audit evidence that the scans "
+            "were dealt with, not just the database fields."
+        ),
+    )
     purged_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
