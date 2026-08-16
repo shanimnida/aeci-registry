@@ -81,6 +81,14 @@ CONTACT_RETENTION_DAYS = 730
 # Version string stamped on the current paper profiling form footer.
 CONSENT_FORM_VERSION = "v2 (August 2026)"
 
+# pg_dump is not guaranteed to be on PATH — a stock Windows install of
+# PostgreSQL does not add its bin directory to PATH, so the bare command
+# name resolves on some hosts and not others. Override with the full path
+# to the binary via the environment when needed; the bare name is a
+# sensible default for hosts (Linux servers, most package managers) where
+# it already is on PATH. Never hardcode a host-specific path here.
+PG_DUMP_PATH = env("PG_DUMP_PATH", default="pg_dump")
+
 # Static files always go through whitenoise. Media storage is what the flag
 # switches — the two are unrelated and must not be coupled.
 STORAGES = {
@@ -108,3 +116,16 @@ if env.bool("USE_S3_STORAGE", default=False):
             "querystring_auth": True,
         },
     }
+
+# Production security settings. Gated on DEBUG rather than a dedicated flag
+# because these must never be forgotten on a real deploy, and there is no
+# legitimate production configuration with DEBUG=True.
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    X_FRAME_OPTIONS = "DENY"

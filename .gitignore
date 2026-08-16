@@ -25,6 +25,11 @@ env/
 /staticfiles/
 db.dump
 
+# Database backups — a church member register, never committed
+/backups/
+*.sql
+*.sql.gz
+
 # Tooling
 .pytest_cache/
 .coverage
