@@ -57,3 +57,45 @@ def test_member_numbers_are_assigned_in_sequence_and_never_overwritten():
     fresh.refresh_from_db()
     assert existing.member_no == "MEM-0099"
     assert fresh.member_no == "MEM-0001"
+
+
+@pytest.mark.django_db
+def test_a_denied_view_is_not_logged(client):
+    from django.contrib.auth.models import User
+    from records.models import AccessLog
+
+    person = Person.objects.create(last_name="Santos", first_name="Rhea")
+    nosy = User.objects.create_user("nosy", password="x", is_staff=True)
+    client.force_login(nosy)
+
+    client.get(f"/admin/people/person/{person.pk}/change/")
+
+    assert AccessLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_a_permitted_view_is_logged(client):
+    from django.contrib.auth.models import Group, User
+    from records.models import AccessLog
+    from core import groups
+
+    person = Person.objects.create(last_name="Santos", first_name="Rhea")
+    secretary = User.objects.create_user("sec", password="x", is_staff=True)
+    secretary.groups.add(Group.objects.get(name=groups.SECRETARIAT))
+    client.force_login(secretary)
+
+    client.get(f"/admin/people/person/{person.pk}/change/")
+
+    entry = AccessLog.objects.get()
+    assert entry.user == secretary
+    assert entry.person == person
+
+
+@pytest.mark.django_db
+def test_the_access_log_cannot_be_deleted_through_the_admin():
+    from django.contrib.admin.sites import AdminSite
+    from records.admin import AccessLogAdmin
+    from records.models import AccessLog
+
+    admin_obj = AccessLogAdmin(AccessLog, AdminSite())
+    assert admin_obj.has_delete_permission(None) is False

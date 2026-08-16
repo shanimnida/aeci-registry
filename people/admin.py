@@ -124,7 +124,10 @@ class PersonAdmin(SimpleHistoryAdmin):
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         person = self.get_object(request, object_id)
-        if person is not None:
+        # Log only an access that will actually be permitted. Django enforces
+        # this inside super(), so writing the entry first would record views
+        # that were refused.
+        if person is not None and self.has_view_or_change_permission(request, person):
             AccessLog.record(
                 user=request.user,
                 person=person,
@@ -133,8 +136,19 @@ class PersonAdmin(SimpleHistoryAdmin):
         return super().change_view(request, object_id, form_url, extra_context)
 
 
+class HouseholdPersonInline(admin.TabularInline):
+    """Same rows as HouseholdMemberInline, seen from the household's side.
+
+    The parent link differs, so the field worth autocompleting differs too.
+    """
+
+    model = HouseholdMember
+    extra = 1
+    autocomplete_fields = ("person",)
+
+
 @admin.register(Household)
 class HouseholdAdmin(admin.ModelAdmin):
     list_display = ("name", "date_of_marriage")
     search_fields = ("name",)
-    inlines = (HouseholdMemberInline,)
+    inlines = (HouseholdPersonInline,)
