@@ -129,8 +129,8 @@ class Person(TimeStampedModel):
         instance._loaded_status = instance.membership_status
         return instance
 
-    def refresh_from_db(self, using=None, fields=None):
-        super().refresh_from_db(using=using, fields=fields)
+    def refresh_from_db(self, using=None, fields=None, from_queryset=None):
+        super().refresh_from_db(using=using, fields=fields, from_queryset=from_queryset)
         # refresh_from_db copies field values from a separate instance and never
         # calls from_db on self, so the status shadow has to be resynced by hand.
         # Only when the status was actually refetched: a partial refresh must not
@@ -175,3 +175,42 @@ class Person(TimeStampedModel):
         self.has_missing_data = bool(self.missing_fields)
         super().save(*args, **kwargs)
         self._loaded_status = self.membership_status
+
+
+class HouseholdRole(models.TextChoices):
+    HEAD = "HEAD", "Head"
+    SPOUSE = "SPOUSE", "Spouse"
+    CHILD = "CHILD", "Child"
+    OTHER = "OTHER", "Other"
+
+
+class Household(TimeStampedModel):
+    name = models.CharField(max_length=200, help_text='For example, "Malong Family".')
+    address = models.TextField(blank=True)
+    date_of_marriage = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
+class HouseholdMember(models.Model):
+    household = models.ForeignKey(
+        Household, on_delete=models.CASCADE, related_name="members"
+    )
+    person = models.ForeignKey(
+        Person, on_delete=models.CASCADE, related_name="household_memberships"
+    )
+    role = models.CharField(max_length=10, choices=HouseholdRole.choices)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "person"], name="unique_person_per_household"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.person.full_name} — {self.get_role_display()}"
