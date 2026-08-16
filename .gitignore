@@ -29,6 +29,7 @@ db.dump
 /backups/
 *.sql
 *.sql.gz
+*.partial
 
 # Tooling
 .pytest_cache/

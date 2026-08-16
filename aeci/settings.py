@@ -117,6 +117,13 @@ if env.bool("USE_S3_STORAGE", default=False):
         },
     }
 
+# Backups follow the media storage: on a host whose disk resets, a local dump
+# is not a backup. Defaults to wherever scans go.
+BACKUP_TO_STORAGE = env.bool(
+    "BACKUP_TO_STORAGE", default=env.bool("USE_S3_STORAGE", default=False)
+)
+BACKUP_RETENTION_DAYS = env.int("BACKUP_RETENTION_DAYS", default=30)
+
 # Production security settings. Gated on DEBUG rather than a dedicated flag
 # because these must never be forgotten on a real deploy, and there is no
 # legitimate production configuration with DEBUG=True.
