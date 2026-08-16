@@ -1,10 +1,11 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin
 
 from records.models import AccessLog, FormScan, PurgeRecord
 
 
 @admin.register(FormScan)
-class FormScanAdmin(admin.ModelAdmin):
+class FormScanAdmin(ModelAdmin):
     list_display = ("form_type", "person", "uploaded_by", "uploaded_at")
     list_filter = ("form_type",)
     autocomplete_fields = ("person",)
@@ -16,7 +17,7 @@ class FormScanAdmin(admin.ModelAdmin):
 
 
 @admin.register(AccessLog)
-class AccessLogAdmin(admin.ModelAdmin):
+class AccessLogAdmin(ModelAdmin):
     list_display = ("timestamp", "user", "person", "report", "ip_address")
     list_filter = ("user",)
     readonly_fields = ("user", "person", "report", "timestamp", "ip_address")
@@ -32,7 +33,7 @@ class AccessLogAdmin(admin.ModelAdmin):
 
 
 @admin.register(PurgeRecord)
-class PurgeRecordAdmin(admin.ModelAdmin):
+class PurgeRecordAdmin(ModelAdmin):
     list_display = ("purged_at", "person_label", "history_rows_scrubbed", "person")
     readonly_fields = (
         "person",

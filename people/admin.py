@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from simple_history.admin import SimpleHistoryAdmin
+from unfold.admin import ModelAdmin, TabularInline
 
 from committees.models import CommitteeMembership, CommitteeRole
 from core.groups import is_chairperson_only, is_ict
@@ -36,27 +37,27 @@ def assign_member_numbers(queryset):
     return assigned
 
 
-class HouseholdMemberInline(admin.TabularInline):
+class HouseholdMemberInline(TabularInline):
     model = HouseholdMember
     extra = 1
     autocomplete_fields = ("household",)
 
 
-class CommitteeMembershipInline(admin.TabularInline):
+class CommitteeMembershipInline(TabularInline):
     model = CommitteeMembership
     extra = 1
     fields = ("committee", "function", "role", "date_joined", "date_left")
     autocomplete_fields = ("committee", "function")
 
 
-class FormScanInline(admin.TabularInline):
+class FormScanInline(TabularInline):
     model = FormScan
     extra = 0
     fields = ("form_type", "file", "notes")
 
 
 @admin.register(Person)
-class PersonAdmin(SimpleHistoryAdmin):
+class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_display = (
         "full_name", "member_no", "membership_status", "mobile_number",
         "has_missing_data",
@@ -216,7 +217,7 @@ class PersonAdmin(SimpleHistoryAdmin):
         return super().history_form_view(request, object_id, version_id, extra_context)
 
 
-class HouseholdPersonInline(admin.TabularInline):
+class HouseholdPersonInline(TabularInline):
     """Same rows as HouseholdMemberInline, seen from the household's side.
 
     The parent link differs, so the field worth autocompleting differs too.
@@ -228,7 +229,7 @@ class HouseholdPersonInline(admin.TabularInline):
 
 
 @admin.register(Household)
-class HouseholdAdmin(admin.ModelAdmin):
+class HouseholdAdmin(ModelAdmin):
     list_display = ("name", "date_of_marriage")
     search_fields = ("name",)
     inlines = (HouseholdPersonInline,)

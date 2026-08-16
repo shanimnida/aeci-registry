@@ -3,6 +3,10 @@ psycopg[binary]>=3.1
 django-environ>=0.11
 django-simple-history>=3.5
 django-storages>=1.14
+# AEGIS admin theme. Pinned exactly: 0.104.1 is built against Django>=5.2
+# (we run 5.2.17) and requires Python>=3.12 (we run 3.12.3) — a loose range
+# risks a future release drifting off either floor.
+django-unfold==0.104.1
 boto3>=1.34
 Pillow>=10.2
 gunicorn>=21.2

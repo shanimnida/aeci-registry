@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from simple_history.admin import SimpleHistoryAdmin
+from unfold.admin import ModelAdmin, TabularInline
 
 from committees.models import (
     Appointment, Committee, CommitteeFunction, CommitteeMembership, CommitteeRole, Position,
@@ -8,13 +9,13 @@ from committees.models import (
 from core.groups import is_chairperson_only
 
 
-class CommitteeFunctionInline(admin.TabularInline):
+class CommitteeFunctionInline(TabularInline):
     model = CommitteeFunction
     extra = 0
 
 
 @admin.register(Committee)
-class CommitteeAdmin(admin.ModelAdmin):
+class CommitteeAdmin(ModelAdmin):
     list_display = ("name", "code", "is_self_selectable", "is_active")
     list_filter = ("is_self_selectable", "is_active")
     search_fields = ("name", "code")
@@ -23,13 +24,13 @@ class CommitteeAdmin(admin.ModelAdmin):
 
 
 @admin.register(CommitteeFunction)
-class CommitteeFunctionAdmin(admin.ModelAdmin):
+class CommitteeFunctionAdmin(ModelAdmin):
     list_display = ("committee", "name")
     search_fields = ("name", "committee__name")
 
 
 @admin.register(CommitteeMembership)
-class CommitteeMembershipAdmin(SimpleHistoryAdmin):
+class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_display = ("person", "committee", "role", "function", "date_joined", "date_left")
     list_filter = ("committee", "role")
     search_fields = ("person__last_name", "person__first_name")
@@ -61,13 +62,13 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin):
 
 
 @admin.register(Position)
-class PositionAdmin(admin.ModelAdmin):
+class PositionAdmin(ModelAdmin):
     list_display = ("name", "code", "is_unique_holder")
     search_fields = ("name",)
 
 
 @admin.register(Appointment)
-class AppointmentAdmin(SimpleHistoryAdmin):
+class AppointmentAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_display = ("person", "position", "start_date", "end_date")
     list_filter = ("position",)
     search_fields = ("person__last_name", "person__first_name")

@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import environ
+from django.urls import reverse_lazy
+from django.utils.translation import gettext_lazy as _
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -12,6 +14,14 @@ DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
 INSTALLED_APPS = [
+    # Must precede django.contrib.admin: it overrides admin templates and a
+    # couple of admin/js/* files by app-loader precedence, and it replaces
+    # admin.site with its own AdminSite subclass from an AppConfig.ready()
+    # hook (see aeci/urls.py for the header/title/app-ordering set on top of
+    # that). unfold.contrib.simple_history must sit between unfold and
+    # simple_history for the same reason, scoped to the history templates.
+    "unfold",
+    "unfold.contrib.simple_history",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -24,6 +34,158 @@ INSTALLED_APPS = [
     "committees",
     "records",
 ]
+
+# AEGIS admin theme (django-unfold). Purely cosmetic: site branding, a real
+# sidebar, colour, typography. None of this touches permissions — every
+# sidebar item's visibility is gated by the same request.user.has_perm(...)
+# checks the underlying ModelAdmin already enforces, not a parallel ruleset.
+UNFOLD = {
+    "SITE_TITLE": "AEGIS",
+    "SITE_HEADER": "AEGIS",
+    "SITE_SUBHEADER": "Avdei Elohim Growth Information System",
+    "SITE_SYMBOL": "shield_person",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": False,
+    "BORDER_RADIUS": "8px",
+    "COLORS": {
+        # Restrained corporate blue used only for interactive/active state —
+        # the neutral "base" scale (Unfold's default) carries everything
+        # else, so colour still reads as meaning rather than decoration.
+        "primary": {
+            "50": "#eff6ff",
+            "100": "#dbeafe",
+            "200": "#bfdbfe",
+            "300": "#93c5fd",
+            "400": "#60a5fa",
+            "500": "#3b82f6",
+            "600": "#2563eb",
+            "700": "#1d4ed8",
+            "800": "#1e40af",
+            "900": "#1e3a8a",
+            "950": "#172554",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": _("Registry"),
+                "separator": True,
+                "items": [
+                    {
+                        "title": _("People"),
+                        "icon": "person",
+                        "link": reverse_lazy("admin:people_person_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "people.view_person"
+                        ),
+                    },
+                    {
+                        "title": _("Households"),
+                        "icon": "home",
+                        "link": reverse_lazy("admin:people_household_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "people.view_household"
+                        ),
+                    },
+                ],
+            },
+            {
+                "title": _("Committees"),
+                "separator": True,
+                "items": [
+                    {
+                        "title": _("Committees"),
+                        "icon": "groups",
+                        "link": reverse_lazy("admin:committees_committee_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "committees.view_committee"
+                        ),
+                    },
+                    {
+                        "title": _("Committee memberships"),
+                        "icon": "badge",
+                        "link": reverse_lazy(
+                            "admin:committees_committeemembership_changelist"
+                        ),
+                        "permission": lambda request: request.user.has_perm(
+                            "committees.view_committeemembership"
+                        ),
+                    },
+                    {
+                        "title": _("Positions"),
+                        "icon": "military_tech",
+                        "link": reverse_lazy("admin:committees_position_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "committees.view_position"
+                        ),
+                    },
+                    {
+                        "title": _("Appointments"),
+                        "icon": "event_available",
+                        "link": reverse_lazy("admin:committees_appointment_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "committees.view_appointment"
+                        ),
+                    },
+                ],
+            },
+            {
+                "title": _("Records"),
+                "separator": True,
+                "items": [
+                    {
+                        "title": _("Form scans"),
+                        "icon": "description",
+                        "link": reverse_lazy("admin:records_formscan_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "records.view_formscan"
+                        ),
+                    },
+                    {
+                        "title": _("Access logs"),
+                        "icon": "history",
+                        "link": reverse_lazy("admin:records_accesslog_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "records.view_accesslog"
+                        ),
+                    },
+                    {
+                        "title": _("Purge records"),
+                        "icon": "delete_history",
+                        "link": reverse_lazy("admin:records_purgerecord_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "records.view_purgerecord"
+                        ),
+                    },
+                ],
+            },
+            {
+                "title": _("Administration"),
+                "separator": True,
+                "items": [
+                    {
+                        "title": _("Users"),
+                        "icon": "manage_accounts",
+                        "link": reverse_lazy("admin:auth_user_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "auth.view_user"
+                        ),
+                    },
+                    {
+                        "title": _("Groups"),
+                        "icon": "admin_panel_settings",
+                        "link": reverse_lazy("admin:auth_group_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "auth.view_group"
+                        ),
+                    },
+                ],
+            },
+        ],
+    },
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
