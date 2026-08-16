@@ -63,6 +63,15 @@ records.
   have accumulated to show what merging should actually do.
 - SMS notification of any kind (D17).
 - OCR of scanned forms (see §6.4)
+- **Skills and talents inventory.** Proposed and declined for Phase A. Worth
+  revisiting: the ICT Committee's own event proposal states that identifying members
+  with particular skills is a goal.
+- **Calendar feed (`.ics`) of celebrations.** Proposed and declined.
+- **Pastoral care notes.** Proposed and declined. Would raise the sensitivity of the
+  whole database and needs the Board's explicit agreement first.
+- **Self-service verification kiosk.** Proposed and declined, and recommended against:
+  authenticating on `member_no` plus date of birth means anyone knowing two facts about
+  a person can read their record.
 - Everything in subsystems B, C and D
 
 ---
@@ -90,6 +99,7 @@ Decisions agreed during design, with the reasoning that produced them.
 | D15 | **`approved_by` is required on transition to `MEMBER`, not on creation as `MEMBER`** | Requiring it on creation would make the paper backlog un-encodable, since nobody knows which meeting accepted a long-standing member. Scoping it to transitions keeps encoding fast and future decisions attributable |
 | D16 | **Phase A includes a read-only reporting layer** (§7) | Requested by the Church Secretary, and every report is a query over data the schema already holds. No new collection, and the marginal cost over the encoding tool is small |
 | D17 | **Greeting lists show month and day only, and there is no SMS** | Birth year reveals age to twelve chairpersons who have no need for it. SMS costs money per message in the Philippines and email coverage on the paper forms is patchy; an on-screen list with an optional weekly email digest covers the need |
+| D18 | **The paper form is revised to v2 before the next collection** | Consent is signed on 23 August 2026. Whatever is printed that day governs the next batch of members, so the consent clause, the nickname field and the Grievance note had to land first. The footer carries "v2 (August 2026)", which is what `consent_version` stores |
 
 ---
 
@@ -565,8 +575,26 @@ For people who will not log in.
 | Children's Ministry roster | Includes guardian names and numbers, for pickup and safety |
 | Emergency contact sheet | Events, trips, outings |
 | Pre-filled profiling form | Prints a person's record in the layout of the paper form, so they can verify it and sign. Closes the loop on both accuracy and consent |
+| Church ID cards | Printable cards carrying name, nickname and `member_no`. Groundwork for attendance should it ever be introduced |
+| Area listing | Members grouped by locality, for home visits and for any future neighbourhood grouping. Derived from `home_address`; no new field required |
 
-### 7.6 Access rules for reports
+### 7.6 Statutory and corporate records
+
+AECI is a registered non-stock, non-profit corporation, and the registry holds exactly
+the data its corporate filings describe. Two outputs follow almost for free.
+
+| Output | Contents |
+| --- | --- |
+| **Membership register** | The church's book of members: `member_no`, full name, date admitted, and current status, in register order. Produced on demand instead of reconstructed by hand |
+| **Officer and trustee list** | Every `Appointment` with position, holder and dates, for the corporation's annual filings |
+
+**Caveat to confirm, not to assume.** The exact form and content a Philippine
+non-stock corporation must keep and file is a question for whoever handles AECI's SEC
+filings. These reports are built to hold the data and produce a clean listing; they are
+not a claim about statutory sufficiency. Confirm the required format before relying on
+either for a filing.
+
+### 7.7 Access rules for reports
 
 Every report honours the field-level restrictions of §4. A chairperson's contact
 export cannot contain fields a chairperson may not see.
@@ -578,6 +606,7 @@ export cannot contain fields a chairperson may not see.
 | Committee management | Secretariat, Board, ICT; chairpersons see their own committee only |
 | Board statistics | Board, Secretariat, ICT — aggregate figures only, no individuals |
 | Printable output | Secretariat, ICT; chairpersons for their own committee |
+| Statutory records | Board, Secretariat, ICT only. These list the whole congregation, so they carry the widest exposure of any output in Phase A |
 
 **Audit granularity.** A report listing thirty people writes **one** `AccessLog` entry
 naming the report and its scope, not thirty. Per-person logging is reserved for the
@@ -679,7 +708,7 @@ Tracked, not blocking implementation.
 | 1 | Photographs of filled paper profiling forms → `data/scanned-forms/` | ICT | Encoding, not build |
 | 2 | Existing `MEM-` register — is one kept, highest number assigned, are numbers already handwritten | ICT | Seeding |
 | 3 | Full legal names for chairpersons recorded by first name only (§6.5) | ICT | Seeding |
-| 4 | Data privacy consent clause signed at next Sunday service | Church | Go-live |
+| 4 | Form v2 drafted with the consent clause (D18). Remaining: open in Word to check page layout, print, and collect signatures on 23 August 2026 | ICT / Church | Go-live |
 | 5 | Board ratification of the retention policy (§5.1) | Board | Go-live |
 | 6 | Filled examples of FR, RB, CDV and a real MoM | ICT | Phase B design |
 | 7 | Attendance, baptism and dedication, transfer letter, visitor card forms — do not yet exist | Church | Future phases |
