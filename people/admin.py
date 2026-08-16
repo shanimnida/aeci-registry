@@ -1,10 +1,24 @@
 from django.contrib import admin, messages
 from simple_history.admin import SimpleHistoryAdmin
 
-from committees.models import CommitteeMembership
+from committees.models import CommitteeMembership, CommitteeRole
+from core import groups
 from core.numbering import next_member_no
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
+
+# Spec D12: enough to run a committee, and nothing more.
+CHAIRPERSON_FIELDS = ("first_name", "last_name", "nickname", "mobile_number", "email")
+
+WIDER_ACCESS_GROUPS = (groups.ICT, groups.SECRETARIAT, groups.BOARD)
+
+
+def is_chairperson_only(user) -> bool:
+    """True for a user who is a Chairperson and nothing more privileged."""
+    if user.is_superuser:
+        return False
+    names = set(user.groups.values_list("name", flat=True))
+    return groups.CHAIRPERSON in names and not names & set(WIDER_ACCESS_GROUPS)
 
 
 def find_possible_duplicates(person):
@@ -142,6 +156,42 @@ class PersonAdmin(SimpleHistoryAdmin):
         if request.method == "POST":
             return self.has_change_permission(request, obj)
         return self.has_view_or_change_permission(request, obj)
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if not is_chairperson_only(request.user):
+            return queryset
+        chaired = (
+            CommitteeMembership.objects.active()
+            .filter(
+                person__user=request.user,
+                role__in=(CommitteeRole.CHAIRPERSON, CommitteeRole.CO_CHAIR),
+            )
+            .values_list("committee_id", flat=True)
+        )
+        return queryset.filter(
+            committee_memberships__committee_id__in=chaired
+        ).distinct()
+
+    def get_fields(self, request, obj=None):
+        if is_chairperson_only(request.user):
+            return CHAIRPERSON_FIELDS
+        return super().get_fields(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        if is_chairperson_only(request.user):
+            return CHAIRPERSON_FIELDS
+        return super().get_readonly_fields(request, obj)
+
+    def get_fieldsets(self, request, obj=None):
+        if is_chairperson_only(request.user):
+            return ((None, {"fields": CHAIRPERSON_FIELDS}),)
+        return super().get_fieldsets(request, obj)
+
+    def get_inlines(self, request, obj):
+        if is_chairperson_only(request.user):
+            return ()
+        return super().get_inlines(request, obj)
 
 
 class HouseholdPersonInline(admin.TabularInline):
