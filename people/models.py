@@ -129,6 +129,15 @@ class Person(TimeStampedModel):
         instance._loaded_status = instance.membership_status
         return instance
 
+    def refresh_from_db(self, using=None, fields=None):
+        super().refresh_from_db(using=using, fields=fields)
+        # refresh_from_db copies field values from a separate instance and never
+        # calls from_db on self, so the status shadow has to be resynced by hand.
+        # Only when the status was actually refetched: a partial refresh must not
+        # discard an unsaved in-memory status change.
+        if fields is None or "membership_status" in fields:
+            self._loaded_status = self.membership_status
+
     def __str__(self):
         return f"{self.full_name} ({self.member_no})" if self.member_no else self.full_name
 

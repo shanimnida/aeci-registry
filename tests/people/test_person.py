@@ -81,6 +81,21 @@ def test_missing_data_flag_tracks_blank_fields():
 
 
 @pytest.mark.django_db
+def test_refresh_from_db_resyncs_the_status_shadow():
+    person = Person.objects.create(last_name="Reyes", first_name="Manex")
+    past = timezone.now() - dt.timedelta(days=1)
+    Person.objects.filter(pk=person.pk).update(
+        membership_status=MembershipStatus.INACTIVE, status_changed_at=past
+    )
+    person.refresh_from_db()
+
+    person.save()
+
+    person.refresh_from_db()
+    assert person.status_changed_at == past
+
+
+@pytest.mark.django_db
 def test_full_name_collapses_blanks():
     person = Person(last_name="Malong", first_name="Shan", middle_name="Albert")
     assert person.full_name == "Shan Albert Malong"
