@@ -32,11 +32,26 @@ def test_viewing_a_person_is_recorded():
 
 
 @pytest.mark.django_db
-def test_a_report_writes_one_entry_not_one_per_row():
-    """Spec section 7.6: per-row logging buries the signal the log exists for."""
+def test_a_report_view_is_logged_without_naming_a_person():
+    """A report entry names the report, not each person listed in it.
+
+    That one-entry-per-report guarantee is enforced at the call site in the
+    admin (Task 10); here we only check the model supports the shape.
+    """
     user = User.objects.create_user("sunshine", password="x")
-    for name in ("A", "B", "C"):
-        Person.objects.create(last_name=name, first_name="X")
     AccessLog.record(user=user, report="birthdays:next-30-days")
-    assert AccessLog.objects.count() == 1
-    assert AccessLog.objects.get().person is None
+    entry = AccessLog.objects.get()
+    assert entry.person is None
+    assert entry.report == "birthdays:next-30-days"
+
+
+@pytest.mark.django_db
+def test_record_requires_exactly_one_of_person_or_report():
+    user = User.objects.create_user("registrar", password="x")
+    person = Person.objects.create(last_name="Reyes", first_name="Ana")
+
+    with pytest.raises(ValueError):
+        AccessLog.record(user=user)
+
+    with pytest.raises(ValueError):
+        AccessLog.record(user=user, person=person, report="birthdays:next-30-days")

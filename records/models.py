@@ -50,7 +50,7 @@ class AccessLog(models.Model):
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL
     )
     person = models.ForeignKey(
-        "people.Person", null=True, blank=True, on_delete=models.CASCADE
+        "people.Person", null=True, blank=True, on_delete=models.SET_NULL
     )
     report = models.CharField(
         max_length=120,
@@ -69,6 +69,10 @@ class AccessLog(models.Model):
 
     @classmethod
     def record(cls, user, person=None, report="", ip=None):
+        if bool(person) == bool(report):
+            raise ValueError(
+                "Record either a person view or a report view, not both and not neither."
+            )
         return cls.objects.create(
             user=user, person=person, report=report, ip_address=ip
         )
