@@ -1,0 +1,690 @@
+<title>Avdei Elohim Registry</title>
+<style>
+  :root {
+    --ground:   #F2F4F1;
+    --surface:  #FBFCFA;
+    --ink:      #14201C;
+    --ink-soft: #55635C;
+    --ink-faint:#7C8A83;
+    --accent:   #1F5C46;
+    --accent-bg:#E2EBE5;
+    --brass:    #8F6318;
+    --brass-bg: #F0E7D6;
+    --rule:     #D6DDD5;
+    --rule-soft:#E4E9E2;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: ui-sans-serif, "Segoe UI", Roboto, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "Consolas", "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0F1512;
+      --surface:  #161D19;
+      --ink:      #E5ECE6;
+      --ink-soft: #96A49B;
+      --ink-faint:#74827A;
+      --accent:   #6BC79E;
+      --accent-bg:#172C23;
+      --brass:    #D6A45C;
+      --brass-bg: #2C2416;
+      --rule:     #28322C;
+      --rule-soft:#1D2621;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:   #0F1512;
+    --surface:  #161D19;
+    --ink:      #E5ECE6;
+    --ink-soft: #96A49B;
+    --ink-faint:#74827A;
+    --accent:   #6BC79E;
+    --accent-bg:#172C23;
+    --brass:    #D6A45C;
+    --brass-bg: #2C2416;
+    --rule:     #28322C;
+    --rule-soft:#1D2621;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 1.25rem 6rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 50rem;
+    margin: 0 auto;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    padding: 3.5rem 0 1.75rem;
+    border-bottom: 2px solid var(--ink);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .org {
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .org-sub {
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2rem, 6vw, 2.9rem);
+    line-height: 1.1;
+    font-weight: 600;
+    margin: 0.6rem 0 0;
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+
+  .standfirst {
+    font-size: 1rem;
+    color: var(--ink-soft);
+    max-width: 40rem;
+    margin: 0.15rem 0 0;
+  }
+
+  .meta {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.02em;
+    margin-top: 0.75rem;
+  }
+
+  /* ---------- legend ---------- */
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    padding: 1.1rem 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+  }
+
+  .legend div { display: flex; align-items: center; gap: 0.5rem; }
+
+  /* ---------- status chips ---------- */
+
+  .chip {
+    font-family: var(--sans);
+    font-size: 0.63rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.5rem;
+    border-radius: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .chip.confirmed { background: var(--accent-bg); color: var(--accent); }
+  .chip.proposed  { background: var(--brass-bg);  color: var(--brass); }
+  .chip.deferred  { background: transparent; color: var(--ink-faint); border: 1px solid var(--rule); }
+
+  /* ---------- sections ---------- */
+
+  section { padding-top: 2.75rem; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .numeral {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+    min-width: 2.4rem;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .sec-note {
+    font-size: 0.88rem;
+    color: var(--ink-soft);
+    margin: 0.9rem 0 0;
+    max-width: 42rem;
+  }
+
+  /* ---------- feature rows ---------- */
+
+  .rows { display: flex; flex-direction: column; }
+
+  .row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 0.95rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
+  .row-body { flex: 1; min-width: 0; }
+
+  .row-name {
+    font-weight: 640;
+    font-size: 0.97rem;
+    letter-spacing: -0.005em;
+  }
+
+  .row-desc {
+    font-size: 0.88rem;
+    color: var(--ink-soft);
+    margin-top: 0.15rem;
+  }
+
+  .row-desc b { color: var(--ink); font-weight: 640; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--accent-bg);
+    color: var(--accent);
+    padding: 0.08em 0.35em;
+    border-radius: 2px;
+  }
+
+  /* ---------- callout ---------- */
+
+  .callout {
+    margin-top: 2.75rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--brass);
+    padding: 1.5rem 1.5rem 1.6rem;
+  }
+
+  .callout h2 { font-size: 1.25rem; }
+
+  .callout .when {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin-bottom: 0.35rem;
+  }
+
+  .callout ol {
+    margin: 1rem 0 0;
+    padding-left: 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+  }
+
+  .callout li::marker { color: var(--brass); font-weight: 700; }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.25rem;
+    justify-content: space-between;
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, .row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 34rem) {
+    .row { flex-direction: column; gap: 0.4rem; }
+    .chip { align-self: flex-start; }
+    .numeral { min-width: 1.9rem; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="org">Avdei Elohim Church Inc.</div>
+    <div class="org-sub">A Registered Non-Stock, Non-Profit Religious Corporation</div>
+    <h1>Member &amp; Committee Registry</h1>
+    <p class="standfirst">
+      Everything the first phase of the church information system will do — and what it
+      deliberately will not. Prepared for the Secretariat and the Board.
+    </p>
+    <div class="meta">PHASE A &nbsp;·&nbsp; ICT COMMITTEE &nbsp;·&nbsp; 16 AUGUST 2026</div>
+  </header>
+
+  <div class="legend">
+    <div><span class="chip confirmed">Confirmed</span> agreed, being built</div>
+    <div><span class="chip proposed">Proposed</span> new — awaiting your decision</div>
+    <div><span class="chip deferred">Deferred</span> deliberately not yet</div>
+  </div>
+
+  <section>
+    <div class="sec-head"><span class="numeral">I.</span><h2>Member records</h2></div>
+    <p class="sec-note">
+      The foundation. Everything else in the church system will point back at these records.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Full profiling records</div>
+        <div class="row-desc">Every field from the paper form — personal details, contact, family, committee choices, certification date.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Households and families</div>
+        <div class="row-desc">Spouse, children, date of marriage. One family, one page.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Children as real records</div>
+        <div class="row-desc">A child currently appears on two different papers. Here they are <b>one record</b> — and when they grow up, they become a member without being typed in again.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Guardians</div>
+        <div class="row-desc">Including a guardian who isn't in the household — a grandmother bringing a child whose parents don't attend.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Member numbers</div>
+        <div class="row-desc">Next free <code>MEM-0001</code> suggested automatically, and always overridable when a number is already written on the paper.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Scanned forms attached</div>
+        <div class="row-desc">The photo of the original paper stays with the record, as evidence and for checking against.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Duplicate finder</div>
+        <div class="row-desc">Warns when a new record looks like one already there. A warning, never a block — two people really can share a name.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Incomplete forms still save</div>
+        <div class="row-desc">Blanks on paper stay blank. A system that refuses half-filled forms is a system nobody uses.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Nobody is ever deleted</div>
+        <div class="row-desc">People become inactive, transferred, or deceased. The record stays — it's the church's register.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">II.</span><h2>Committees and officers</h2></div>
+    <p class="sec-note">
+      Built from the Board and Committee document, which turned out to describe more structure
+      than the profiling form does.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Twelve committees</div>
+        <div class="row-desc">Eleven that members may sign up for, plus <b>Grievance and Reconciliation</b>, which is appointed rather than chosen.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Sub-functions inside committees</div>
+        <div class="row-desc">Transport, Benevolence, Song Leading, Maintenance — so someone can be assigned to the specific job, not just the committee.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Four roles</div>
+        <div class="row-desc">Chairperson, Co-Chair, Member, and Board Oversight.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Two-committee limit enforced</div>
+        <div class="row-desc">Exactly as the form says. Being appointed Chairperson or Oversight doesn't use up one of the two.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Officer appointments with history</div>
+        <div class="row-desc">Not just who is Treasurer now, but who was Treasurer then — which future fund records will need.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Staffing gaps report</div>
+        <div class="row-desc">Which committees have no Chairperson, no Co-Chair, or no Board Oversight assigned. Your July document has several of these blanks.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Who's free to recruit</div>
+        <div class="row-desc">Members already at the two-committee limit, versus members serving on none.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">III.</span><h2>Celebrations</h2></div>
+    <p class="sec-note">
+      The Secretary's request. The Sunshine Committee gets this too, since greetings are their job.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Upcoming birthdays</div>
+        <div class="row-desc">Shows the day and month only — never the year, so nobody's age circulates.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Wedding anniversaries</div>
+        <div class="row-desc">From the date of marriage already on the profiling form.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Membership and service anniversaries</div>
+        <div class="row-desc">Years in the church, and years serving on a committee.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Ready-to-post greeting</div>
+        <div class="row-desc">A written greeting using the person's nickname, ready to paste onto the church Facebook page. Turns a list of dates into thirty seconds of work.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Weekly email digest</div>
+        <div class="row-desc">Sent to the Secretary and the Sunshine chairperson. No text messages — those cost money per send.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Nobody greeted by mistake</div>
+        <div class="row-desc">Members who have passed away, transferred, or asked not to be posted about are excluded automatically.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">IV.</span><h2>Everyday work lists</h2></div>
+    <p class="sec-note">
+      Things the Secretariat currently keeps track of by memory.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Records to chase up</div>
+        <div class="row-desc">Who has missing information, and exactly which fields. Encode fast now, clean up over following Sundays.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Privacy consent not yet signed</div>
+        <div class="row-desc">Who still needs to sign, so nobody is missed at the door.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">New members to welcome</div>
+        <div class="row-desc">Everyone who joined in the last two months.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Officer terms expiring</div>
+        <div class="row-desc">Ninety days' warning, so the Board isn't caught out.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Children reaching 13 and 18</div>
+        <div class="row-desc">A prompt for Children's Ministry and Youth to talk to a family. Never an automatic change — a person decides.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Recent changes</div>
+        <div class="row-desc">What was edited and by whom, so encoding mistakes get caught in days rather than years.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">V.</span><h2>Numbers for the Board</h2></div>
+    <p class="sec-note">
+      Real figures for planning sessions, instead of estimates.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Headcount by status</div>
+        <div class="row-desc">Members, children, inactive, transferred — at a glance.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Committee sizes and vacancies</div>
+        <div class="row-desc">Which committees are overloaded and which are empty.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Age bands and gender split</div>
+        <div class="row-desc">Children, youth, young adults, adults, seniors. Useful for Youth and Children's Ministry planning.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Growth and data completeness</div>
+        <div class="row-desc">New members per month, and what percentage of records are actually complete.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">VI.</span><h2>Things you can print or send</h2></div>
+    <p class="sec-note">
+      For the many people who will never log in.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Committee rosters</div>
+        <div class="row-desc">Clean printable lists for posting and handouts.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Children's Ministry roster</div>
+        <div class="row-desc">With guardian names and numbers, for pickup and safety.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Emergency contact sheet</div>
+        <div class="row-desc">One page to carry on outings, trips, and events.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Pre-filled profiling form</div>
+        <div class="row-desc">Prints someone's record in the layout of the paper form, so they can check it and sign.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Committee contact export</div>
+        <div class="row-desc">A paste-ready list for starting a group chat. A chairperson can only export their own committee.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">VII.</span><h2>Privacy and safety</h2></div>
+    <p class="sec-note">
+      The form collects birthdates, addresses, civil status, and children's details. Under the
+      Data Privacy Act these are sensitive, and minors' data doubly so.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Five levels of access</div>
+        <div class="row-desc">ICT, Secretariat, Treasurer, Board, and Committee Chairpersons each see only what their work requires.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Chairpersons see very little</div>
+        <div class="row-desc">Name, mobile, email — for their own committee only. Not addresses, birthdates, civil status, or families.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Consent recorded per person</div>
+        <div class="row-desc">Who signed, when, and which version of the form — so the church can actually prove it.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">A record of who looked</div>
+        <div class="row-desc">Every viewing of a person's record is logged. If a member ever asks how their address got out, there's an answer.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Contact details expire</div>
+        <div class="row-desc">Two years after someone transfers or passes away, their phone, email and address are cleared. Their place in the register stays forever.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Nightly backups</div>
+        <div class="row-desc">Plus a restore procedure someone has actually tested. A backup nobody has restored from is a rumour.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Two people needed to make a member</div>
+        <div class="row-desc">The Secretariat can't create logins; ICT can't grant membership. Neither one can do it alone.</div>
+      </div><span class="chip confirmed">Confirmed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">VIII.</span><h2>New ideas for you to decide on</h2></div>
+    <p class="sec-note">
+      None of these need new information collected. They all use data the system will already hold.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Skills and talents list</div>
+        <div class="row-desc"><b>Recommended.</b> Tag people with what they can do — keyboard, video editing, sound, teaching, driving. Your own art competition proposal says its purpose is partly to <i>find members with digital art skills for ICT</i>. This is where those findings would live.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Official membership register</div>
+        <div class="row-desc"><b>Recommended.</b> A registered non-stock corporation is expected to keep a proper book of members. The system can produce it on demand instead of someone rebuilding it by hand. Worth confirming the exact requirement with whoever handles your SEC filings.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Officer list for annual filings</div>
+        <div class="row-desc"><b>Recommended.</b> The appointment records already hold every trustee and officer with their dates. Generating the list for your yearly SEC paperwork is nearly free once that data exists.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Calendar feed for phones</div>
+        <div class="row-desc"><b>Recommended.</b> Subscribe to birthdays and anniversaries in Google Calendar, so the Sunshine Committee gets reminders without opening the system at all.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Church ID cards</div>
+        <div class="row-desc">Printable cards carrying the member number. Members tend to like having them, and it lays groundwork if you ever do attendance.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Group members by area</div>
+        <div class="row-desc">Sort by locality for home visits, or for forming neighbourhood groups later.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Pastoral care notes</div>
+        <div class="row-desc"><b>Handle with care.</b> Private notes visible only to the Pastor. Genuinely useful, but it turns the database into something far more sensitive, and it needs the Board's explicit agreement before a single note is written.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Self-check station at church</div>
+        <div class="row-desc"><b>I'd skip this one.</b> A tablet where members verify their own details using their member number and birthdate. It avoids giving everyone a login, but anyone who knows two facts about a person can read their record.</div>
+      </div><span class="chip proposed">Proposed</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="numeral">IX.</span><h2>Deliberately left out</h2></div>
+    <p class="sec-note">
+      Not oversights. Each of these is a decision, and each can be revisited later.
+    </p>
+    <div class="rows">
+      <div class="row"><div class="row-body">
+        <div class="row-name">Member logins</div>
+        <div class="row-desc">The system is built so they can be switched on later without rebuilding anything. Requiring them now would stall the whole project on sign-ups.</div>
+      </div><span class="chip deferred">Deferred</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Member photographs</div>
+        <div class="row-desc">Photographs of children need their own consent conversation with the Board first.</div>
+      </div><span class="chip deferred">Deferred</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Attendance tracking</div>
+        <div class="row-desc">There's no attendance form yet, and attendance data is sensitive enough to deserve its own careful design.</div>
+      </div><span class="chip deferred">Deferred</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Text message reminders</div>
+        <div class="row-desc">Costs money per message, and many forms have no mobile number recorded.</div>
+      </div><span class="chip deferred">Deferred</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Reading handwriting automatically</div>
+        <div class="row-desc">Checking what a machine guessed takes longer than typing it, and a wrongly read birthdate is worse than a blank one.</div>
+      </div><span class="chip deferred">Deferred</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Merging duplicate records</div>
+        <div class="row-desc">The system will find duplicates now. Merging waits until there are enough to show what merging should actually do.</div>
+      </div><span class="chip deferred">Deferred</span></div>
+
+      <div class="row"><div class="row-body">
+        <div class="row-name">Fund requests, finances, and minutes</div>
+        <div class="row-desc">Your <code>EARF</code>, <code>FR</code>, <code>RB</code>, <code>CDV</code> and meeting-minutes forms are the next three phases. They all depend on the member records being in place first.</div>
+      </div><span class="chip deferred">Deferred</span></div>
+    </div>
+  </section>
+
+  <div class="callout">
+    <div class="when">Before Sunday, 23 August</div>
+    <h2>The paper form needs changes first</h2>
+    <p class="sec-note">
+      Consent is being signed next Sunday. Whatever is printed that day is what the church is
+      stuck with for the next batch of members, so it's worth fixing three things now.
+    </p>
+    <ol>
+      <li><b>Add a data privacy consent clause.</b> The form currently certifies that the information is true, but never asks permission to hold it. This is the one that actually matters legally.</li>
+      <li><b>Add a nickname field.</b> Greetings should use the name people go by. Your own Board document records officers as "MJ" and "JM", so the church already thinks this way.</li>
+      <li><b>Leave Grievance and Reconciliation off the checkboxes.</b> Confirmed as appointed rather than chosen — worth stating on the form so nobody wonders why it's missing.</li>
+    </ol>
+  </div>
+
+  <footer>
+    <span>Avdei Elohim Church Inc. · ICT Committee</span>
+    <span>Phase A of four · People &amp; Committees</span>
+  </footer>
+
+</div>
