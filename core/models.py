@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 
 class TimeStampedModel(models.Model):
@@ -35,7 +36,17 @@ class ControlNumberSequence(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["prefix", "year"], name="unique_prefix_year"
-            )
+            ),
+            # PostgreSQL's unique index treats every NULL as distinct from
+            # every other NULL, so the constraint above never fires for
+            # year=None — exactly the case perpetual sequences (MEM-) use.
+            # A partial unique index scoped to the NULL rows closes that
+            # gap: at most one row per prefix may have year IS NULL.
+            models.UniqueConstraint(
+                fields=["prefix"],
+                condition=Q(year__isnull=True),
+                name="unique_prefix_when_year_null",
+            ),
         ]
 
     def __str__(self):
