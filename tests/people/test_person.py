@@ -1,5 +1,8 @@
+import datetime as dt
+
 import pytest
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from people.models import MembershipStatus, Person
 
@@ -50,11 +53,17 @@ def test_changing_to_member_succeeds_with_an_approver():
 def test_status_change_stamps_the_time():
     person = Person.objects.create(last_name="Daclitan", first_name="Kathleen")
     assert person.status_changed_at is not None
-    first_stamp = person.status_changed_at
+
+    # Push the stamp a day back so the re-stamp is unambiguous. Two save()
+    # calls within one clock tick would otherwise produce equal timestamps.
+    past = timezone.now() - dt.timedelta(days=1)
+    Person.objects.filter(pk=person.pk).update(status_changed_at=past)
+    person.refresh_from_db()
 
     person.membership_status = MembershipStatus.TRANSFERRED
     person.save()
-    assert person.status_changed_at > first_stamp
+
+    assert person.status_changed_at > past
 
 
 @pytest.mark.django_db
