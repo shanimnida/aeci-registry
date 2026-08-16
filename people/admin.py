@@ -124,16 +124,24 @@ class PersonAdmin(SimpleHistoryAdmin):
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         person = self.get_object(request, object_id)
-        # Log only an access that will actually be permitted. Django enforces
-        # this inside super(), so writing the entry first would record views
-        # that were refused.
-        if person is not None and self.has_view_or_change_permission(request, person):
+        if person is not None and self._access_will_be_permitted(request, person):
             AccessLog.record(
                 user=request.user,
                 person=person,
                 ip=request.META.get("REMOTE_ADDR"),
             )
         return super().change_view(request, object_id, form_url, extra_context)
+
+    def _access_will_be_permitted(self, request, obj) -> bool:
+        """Mirror what Django is about to enforce, which differs by method.
+
+        _changeform_view accepts view-or-change for a GET but requires change
+        for a POST. Gating on the looser rule would log a refused POST from a
+        view-only user.
+        """
+        if request.method == "POST":
+            return self.has_change_permission(request, obj)
+        return self.has_view_or_change_permission(request, obj)
 
 
 class HouseholdPersonInline(admin.TabularInline):

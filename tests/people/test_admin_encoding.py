@@ -99,3 +99,33 @@ def test_the_access_log_cannot_be_deleted_through_the_admin():
 
     admin_obj = AccessLogAdmin(AccessLog, AdminSite())
     assert admin_obj.has_delete_permission(None) is False
+
+
+@pytest.mark.django_db
+def test_a_refused_post_from_a_view_only_user_is_not_logged(client):
+    from django.contrib.auth.models import Permission, User
+    from records.models import AccessLog
+
+    person = Person.objects.create(last_name="Santos", first_name="Rhea")
+    viewer = User.objects.create_user("viewer", password="x", is_staff=True)
+    viewer.user_permissions.add(Permission.objects.get(codename="view_person"))
+    client.force_login(viewer)
+
+    client.post(f"/admin/people/person/{person.pk}/change/", {})
+
+    assert AccessLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_a_view_only_user_reading_the_page_is_still_logged(client):
+    from django.contrib.auth.models import Permission, User
+    from records.models import AccessLog
+
+    person = Person.objects.create(last_name="Santos", first_name="Rhea")
+    viewer = User.objects.create_user("viewer", password="x", is_staff=True)
+    viewer.user_permissions.add(Permission.objects.get(codename="view_person"))
+    client.force_login(viewer)
+
+    client.get(f"/admin/people/person/{person.pk}/change/")
+
+    assert AccessLog.objects.get().person == person
