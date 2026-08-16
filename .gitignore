@@ -1,0 +1,39 @@
+# Scanned paper forms — personal data under RA 10173. NEVER commit these.
+data/scanned-forms/
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.pdf
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Django
+*.sqlite3
+/media/
+/staticfiles/
+db.dump
+
+# Tooling
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
