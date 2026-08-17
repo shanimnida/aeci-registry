@@ -113,8 +113,8 @@ def test_husband_then_wife_produces_one_household_and_two_children_not_two_and_f
     assert roles.count(HouseholdRole.SPOUSE) == 1
     assert roles.count(HouseholdRole.CHILD) == 2
 
-    husband_person = Person.objects.get(last_name="JOSE", first_name="MARK JEROME")
-    wife_person = Person.objects.get(last_name="JOSE", first_name="GLEAN")
+    husband_person = Person.objects.get(last_name="Jose", first_name="Mark Jerome")
+    wife_person = Person.objects.get(last_name="Jose", first_name="Glean")
     assert HouseholdMember.objects.filter(household=household, person=husband_person).exists()
     assert HouseholdMember.objects.filter(household=household, person=wife_person).exists()
     wife_membership = HouseholdMember.objects.get(household=household, person=wife_person)

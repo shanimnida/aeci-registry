@@ -125,8 +125,9 @@ def test_two_overlapping_approvals_of_the_same_row_create_only_one_person(monkey
     assert not t1.is_alive() and not t2.is_alive(), "a thread deadlocked or hung"
 
     # This is the fix under test: only one Person may ever come out of two
-    # overlapping approvals of the same staged row.
-    assert Person.objects.filter(last_name=row.raw_data["last_name"]).count() == 1
+    # overlapping approvals of the same staged row. The fixture's last name
+    # is "DELACRUZ" (all caps); Person.save() title-cases it on the way in.
+    assert Person.objects.filter(last_name="Delacruz").count() == 1
 
     row.refresh_from_db()
     assert row.status == StagedPersonStatus.APPROVED

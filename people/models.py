@@ -4,6 +4,7 @@ from django.db import models
 from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
+from core.capitalization import capitalize_suffix, capitalize_words
 from core.models import TimeStampedModel
 
 
@@ -50,6 +51,24 @@ class Person(TimeStampedModel):
         "emergency_contact_name",
         "emergency_contact_relationship",
         "emergency_contact_number",
+    )
+
+    # Normalized (title-cased, if currently shouting) on every save -- see
+    # core.capitalization. member_no, phone numbers, control numbers and
+    # email are deliberately absent: an identifier or an email address is
+    # not a name, and lower-casing "MEM-0001" or an email would corrupt it.
+    # suffix is handled separately, via capitalize_suffix -- see save().
+    CAPITALIZED_FIELDS = (
+        "last_name",
+        "first_name",
+        "middle_name",
+        "nickname",
+        "place_of_birth",
+        "home_address",
+        "nationality",
+        "emergency_contact_name",
+        "emergency_contact_relationship",
+        "guardian_relationship",
     )
 
     member_no = models.CharField(max_length=12, unique=True, null=True, blank=True)
@@ -186,6 +205,9 @@ class Person(TimeStampedModel):
             )
 
     def save(self, *args, **kwargs):
+        for field_name in self.CAPITALIZED_FIELDS:
+            setattr(self, field_name, capitalize_words(getattr(self, field_name)))
+        self.suffix = capitalize_suffix(self.suffix)
         loaded = getattr(self, "_loaded_status", None)
         if loaded != self.membership_status:
             self.status_changed_at = timezone.now()
@@ -224,6 +246,10 @@ class Household(TimeStampedModel):
             raise ValidationError(
                 {"date_of_marriage": "Date of marriage cannot be in the future."}
             )
+
+    def save(self, *args, **kwargs):
+        self.name = capitalize_words(self.name)
+        super().save(*args, **kwargs)
 
 
 class HouseholdMember(models.Model):

@@ -264,7 +264,7 @@ def test_downloading_the_template_filling_it_in_and_approving_creates_a_real_per
     approve_response = client.post(review_url, post)
     assert approve_response.status_code == 302
 
-    person = Person.objects.get(last_name="VILLANUEVA", first_name="ROSA")
+    person = Person.objects.get(last_name="Villanueva", first_name="Rosa")
     assert person.gender == "FEMALE"
     assert CommitteeMembership.objects.filter(person=person, committee__name="Music and Arts").exists()
     row.refresh_from_db()

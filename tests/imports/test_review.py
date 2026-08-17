@@ -88,7 +88,7 @@ def test_approving_one_person_creates_exactly_that_person_household_children_and
     assert response.status_code == 302
 
     assert Person.objects.count() == 3  # the person + 2 children
-    person = Person.objects.get(last_name="DELACRUZ", first_name="ROSARIO")
+    person = Person.objects.get(last_name="Delacruz", first_name="Rosario")
     assert person.membership_status == MembershipStatus.MEMBER
     assert person.mobile_number == "0917-123-9999"
 
@@ -102,9 +102,12 @@ def test_approving_one_person_creates_exactly_that_person_household_children_and
     # _split_child_name (imports/services.py) strips the parent's own last
     # name off the end of the child's one-string full_name; the middle
     # initial has nowhere else to go, so it stays in first_name -- an
-    # editable field the reviewer can tidy up before approving.
-    assert ("MIKAELA ROSE P.", "DELACRUZ") in child_names
-    assert ("GABRIEL JOHN P.", "DELACRUZ") in child_names
+    # editable field the reviewer can tidy up before approving. "P." keeps
+    # its capital letter: core.capitalization leaves a bare, vowel-free
+    # token (a middle initial) exactly as written rather than title-casing
+    # it into "P.".
+    assert ("Mikaela Rose P.", "Delacruz") in child_names
+    assert ("Gabriel John P.", "Delacruz") in child_names
 
     memberships = CommitteeMembership.objects.filter(person=person)
     assert memberships.count() == 1
@@ -157,7 +160,7 @@ def test_a_reviewer_can_correct_a_field_before_approving(client, secretariat_use
     response = client.post(_review_url(batch, row), post)
     assert response.status_code == 302
 
-    person = Person.objects.get(last_name="MANGUBAT")
+    person = Person.objects.get(last_name="Mangubat")
     assert set(
         CommitteeMembership.objects.filter(person=person).values_list("committee__name", flat=True)
     ) == {"Youth", "Food"}
@@ -174,13 +177,13 @@ def test_v2_form_records_consent_v1_does_not(client, secretariat_user, staged_ba
     client.force_login(secretariat_user)
 
     client.post(_review_url(batch, v1_row), _base_post_data(v1_row))
-    person_v1 = Person.objects.get(last_name="DELACRUZ", first_name="JUAN MIGUEL")
+    person_v1 = Person.objects.get(last_name="Delacruz", first_name="Juan Miguel")
     assert person_v1.consent_given is False
 
     post = _base_post_data(v2_row)
     post["committees"] = ["Youth"]
     client.post(_review_url(batch, v2_row), post)
-    person_v2 = Person.objects.get(last_name="MANGUBAT")
+    person_v2 = Person.objects.get(last_name="Mangubat")
     assert person_v2.consent_given is True
     assert person_v2.consent_date is not None
 
