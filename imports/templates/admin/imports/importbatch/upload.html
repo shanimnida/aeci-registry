@@ -6,11 +6,20 @@
     <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight mb-2">
         Upload member profiling import
     </div>
+    <p class="text-sm text-base-500 dark:text-base-400 mb-4">
+        Upload the spreadsheet you reviewed and corrected in Excel — <code>.xlsx</code> or
+        <code>.csv</code>, whichever you saved — or the AI's original <code>.json</code> file.
+        AEGIS will check its shape and, if it is well formed, stage one entry per person for you
+        to review one at a time. <strong>Nothing is added to the register yet</strong> — that
+        only happens when you approve a person on the next screen.
+    </p>
     <p class="text-sm text-base-500 dark:text-base-400 mb-6">
-        Upload the JSON file the AI produced from the photographed profiling forms. AEGIS will
-        check its shape and, if it is well formed, stage one entry per person for you to review
-        one at a time. <strong>Nothing is added to the register yet</strong> — that only happens
-        when you approve a person on the next screen.
+        Starting a new batch?
+        <a href="{% url 'admin:imports_importbatch_download_template' %}" class="text-primary-600 dark:text-primary-400 underline font-medium">
+            Download the blank template
+        </a>
+        and give it to the AI (as CSV) or fill it in by hand — see
+        <code>docs/IMPORT_TEMPLATE.md</code>.
     </p>
 
     {% if errors %}

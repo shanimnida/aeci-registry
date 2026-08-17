@@ -24,8 +24,16 @@ MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024
 
 class UploadForm(forms.Form):
     file = forms.FileField(
-        label="Import file (.json)",
-        widget=UnfoldAdminFileFieldWidget(attrs={"accept": ".json,application/json"}),
+        label="Import file (.xlsx, .csv, or .json)",
+        widget=UnfoldAdminFileFieldWidget(
+            attrs={
+                "accept": (
+                    ".xlsx,.csv,.json,"
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
+                    "text/csv,application/json"
+                )
+            }
+        ),
     )
 
     def clean_file(self):

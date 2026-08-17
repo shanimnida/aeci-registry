@@ -4,6 +4,7 @@ import re
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
@@ -14,8 +15,9 @@ from records.models import AccessLog
 
 from .forms import ChildFormSet, StagedPersonForm, UploadForm, children_initial, initial_from_data
 from .models import ImportBatch, StagedPerson, StagedPersonStatus
-from .parsing import ImportValidationError, parse_import_json
+from .parsing import ImportValidationError
 from .services import build_person_from_import, possible_duplicate_warning
+from .spreadsheet import parse_import_file, write_blank_template_bytes
 
 
 def _next_pending_row(batch, after_sequence=None):
@@ -123,6 +125,11 @@ class ImportBatchAdmin(ModelAdmin):
                 name="imports_importbatch_upload",
             ),
             path(
+                "template/",
+                self.admin_site.admin_view(self.download_template_view),
+                name="imports_importbatch_download_template",
+            ),
+            path(
                 "<int:batch_id>/review/<int:row_id>/",
                 self.admin_site.admin_view(self.review_view),
                 name="imports_importbatch_review",
@@ -136,6 +143,21 @@ class ImportBatchAdmin(ModelAdmin):
         # instead of building a second entry point.
         return redirect(reverse("admin:imports_importbatch_upload"))
 
+    # -- blank template download -----------------------------------------
+
+    def download_template_view(self, request):
+        # Same permission as uploading -- this is part of the upload flow,
+        # not a separate capability, and a chairperson has neither.
+        self._require_reviewer(request, "imports.add_importbatch")
+        response = HttpResponse(
+            write_blank_template_bytes(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = (
+            'attachment; filename="member_profiling_import_template.xlsx"'
+        )
+        return response
+
     # -- upload -------------------------------------------------------------
 
     def upload_view(self, request):
@@ -146,7 +168,7 @@ class ImportBatchAdmin(ModelAdmin):
             if form.is_valid():
                 raw = form.cleaned_data["file"].read()
                 try:
-                    entries = parse_import_json(raw)
+                    entries = parse_import_file(raw)
                 except ImportValidationError as exc:
                     errors = exc.errors
                 else:
