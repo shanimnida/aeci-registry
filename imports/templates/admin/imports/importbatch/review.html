@@ -70,6 +70,12 @@
     </div>
 {% endif %}
 
+{% if committee_warning %}
+    <div class="bg-orange-50 border border-orange-200 dark:bg-orange-500/10 dark:border-orange-900 rounded-default p-4 mb-6 text-sm text-orange-700 dark:text-orange-400">
+        {{ committee_warning }}
+    </div>
+{% endif %}
+
 {% if read_only %}
 <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-8 max-w-4xl">
     <p class="text-sm text-base-500 dark:text-base-400 mb-8">

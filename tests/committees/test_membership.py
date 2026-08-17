@@ -43,12 +43,31 @@ def test_a_person_may_join_two_committees(person):
 
 
 @pytest.mark.django_db
-def test_a_third_committee_is_refused(person):
+def test_a_third_committee_saves_and_warns(person):
+    """2026-08-17: the profiling form's printed 'select up to TWO (2)' is
+    church policy, not a structural fact -- four of the first thirty forms
+    collected ticked three or four committees, and the church accepted them
+    as filed. A third self-selected committee must save, and
+    self_selected_overflow_count must report it so a reviewer still learns
+    about it (see CommitteeMembership.self_selected_overflow_count).
+    """
     join(person, "ict")
     join(person, "events")
-    with pytest.raises(ValidationError) as exc:
-        join(person, "food")
-    assert "two" in str(exc.value).lower()
+    third = join(person, "food")
+    assert CommitteeMembership.objects.active().filter(person=person).count() == 3
+    assert third.self_selected_overflow_count() == 3
+
+
+@pytest.mark.django_db
+def test_a_fourth_committee_also_saves_and_warns(person):
+    """Real forms in the batch (e.g. IMG_5893) ticked four, not just three --
+    the relaxed cap must not quietly stop working past the third."""
+    join(person, "ict")
+    join(person, "events")
+    join(person, "food")
+    fourth = join(person, "youth")
+    assert CommitteeMembership.objects.active().filter(person=person).count() == 4
+    assert fourth.self_selected_overflow_count() == 4
 
 
 @pytest.mark.django_db
@@ -109,7 +128,13 @@ def test_oversight_requires_a_board_appointment(person):
 
 
 @pytest.mark.django_db
-def test_a_future_departure_does_not_free_a_slot_early(person):
+def test_a_future_departure_still_counts_toward_the_overflow_warning(person):
+    """Mirrors _has_ended()'s guard against a future date_left being treated
+    as 'already left' (see that method's docstring): a membership departing
+    30 days from now is still active today, so it must still count toward
+    self_selected_overflow_count -- proving the warning does not silently
+    stop firing just because a slot has a scheduled future end.
+    """
     join(person, "ict")
     join(person, "events")
     third = CommitteeMembership(
@@ -119,8 +144,9 @@ def test_a_future_departure_does_not_free_a_slot_early(person):
         date_joined=JOINED,
         date_left=TODAY + dt.timedelta(days=30),
     )
-    with pytest.raises(ValidationError):
-        third.full_clean()
+    third.full_clean()
+    third.save()
+    assert third.self_selected_overflow_count() == 3
 
 
 @pytest.mark.django_db

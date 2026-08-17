@@ -3,6 +3,7 @@ import datetime as dt
 import pytest
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth.models import Group, User
+from django.contrib.messages import get_messages
 from django.test import RequestFactory
 from django.utils import timezone
 
@@ -180,3 +181,50 @@ def test_a_chairperson_gets_403_on_the_appointment_changelist(client, chair_setu
     client.force_login(user)
     response = client.get("/admin/committees/appointment/")
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_a_third_self_selected_committee_saves_and_warns_in_the_admin(client):
+    """Same shape as people.admin.PersonAdmin.save_model's duplicate-person
+    warning: a Secretariat user adding a third self-selected MEMBER
+    committee for someone through the admin must have it save (not be
+    refused), with a WARNING message naming the count and the profiling
+    form's own printed cap of two. See
+    CommitteeMembership.self_selected_overflow_count.
+    """
+    person = Person.objects.create(last_name="Cruz", first_name="Ana")
+    ict = Committee.objects.get(code="ict")
+    events = Committee.objects.get(code="events")
+    food = Committee.objects.get(code="food")
+    CommitteeMembership.objects.create(
+        committee=ict, person=person, role=CommitteeRole.MEMBER, date_joined=JOINED
+    )
+    CommitteeMembership.objects.create(
+        committee=events, person=person, role=CommitteeRole.MEMBER, date_joined=JOINED
+    )
+
+    user = User.objects.create_user("sec", password="x", is_staff=True)
+    user.groups.add(Group.objects.get(name=groups.SECRETARIAT))
+    client.force_login(user)
+
+    response = client.post(
+        "/admin/committees/committeemembership/add/",
+        {
+            "committee": food.pk,
+            "person": person.pk,
+            "function": "",
+            "role": CommitteeRole.MEMBER,
+            "date_joined": JOINED.isoformat(),
+            "date_left": "",
+            "_save": "Save",
+        },
+        follow=True,
+    )
+    assert response.status_code == 200
+    assert (
+        CommitteeMembership.objects.filter(person=person, role=CommitteeRole.MEMBER).count() == 3
+    )
+
+    warnings = [str(m) for m in get_messages(response.wsgi_request)]
+    assert any("3 self-selected" in m for m in warnings)
+    assert any("up to 2" in m for m in warnings)

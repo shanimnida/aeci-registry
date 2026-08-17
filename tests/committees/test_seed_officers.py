@@ -303,14 +303,14 @@ def test_a_second_self_selected_member_role_is_accepted_not_refused(tmp_path):
 
 
 @pytest.mark.django_db
-def test_a_third_self_selected_member_role_is_rejected_by_the_models_cap(
+def test_a_third_self_selected_member_role_is_accepted_by_the_relaxed_cap(
     tmp_path, capsys
 ):
-    """A third MEMBER committee must still be refused -- but by
-    CommitteeMembership.clean()'s own two-committee cap, not by this
-    command's CHAIRPERSON/CO_CHAIR-only conflict check. Proven by checking
-    which error text comes back: the cap's "up to two", not the command's
-    "already holds an active" conflict message.
+    """A third MEMBER committee is no longer refused (2026-08-17):
+    CommitteeMembership.self_selected_overflow_count only warns past the
+    profiling form's printed cap of two, it never blocks the save. This
+    command has no warning channel of its own (it only reports rows that
+    raised), so the row simply succeeds, same as any other row.
     """
     call_command(
         "seed_officers",
@@ -343,20 +343,20 @@ def test_a_third_self_selected_member_role_is_rejected_by_the_models_cap(
         "Cruz,Ana,,MEMBER,food,MEMBER,2026-07-07\n",
         name="third.csv",
     )
-    with pytest.raises(CommandError) as exc:
-        call_command("seed_officers", "--path", str(third))
-    assert "1 of 1 row(s) failed" in str(exc.value)
+    call_command("seed_officers", "--path", str(third))
 
     stderr = capsys.readouterr().err
-    assert "up to two" in stderr.lower()
     assert "already holds an active" not in stderr
 
-    assert (
-        CommitteeMembership.objects.filter(
-            person__last_name="Cruz", role=CommitteeRole.MEMBER
-        ).count()
-        == 2
+    memberships = CommitteeMembership.objects.filter(
+        person__last_name="Cruz", role=CommitteeRole.MEMBER
     )
+    assert memberships.count() == 3
+    assert set(memberships.values_list("committee__code", flat=True)) == {
+        "ict",
+        "events",
+        "food",
+    }
 
 
 @pytest.mark.django_db

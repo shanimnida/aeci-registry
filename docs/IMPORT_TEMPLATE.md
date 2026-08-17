@@ -72,7 +72,7 @@ IMG_1234.jpg,,DELACRUZ,JUAN MIGUEL,REYES,,1990-05-12,LA TRINIDAD BENGUET,MALE,MA
 | `Civil Status` | `SINGLE`, `MARRIED`, `WIDOWED`, `SEPARATED`, `ANNULLED`, or blank. |
 | Phone number columns | Exactly as written, spacing and dashes included. |
 | `Child 1 Name` … `Child 5 Name` and their matching `Date of Birth` columns | The printed form has exactly five child rows — five fixed slots, in order. Leave a slot's two cells blank if the form has no child there; never invent a name to fill a slot, and never leave a slot's name blank while filling in its date of birth (or the reverse). If a form genuinely lists more than five children, record the first five and describe the rest in `Notes` — do not add a sixth pair of columns. |
-| Committee columns (`Sunshine` through `Food`, plus `Grievance and Reconciliation`) | Mark `X` in a column if that box is ticked on the form; otherwise leave the cell blank. Include **every** box that is ticked, even if more than two — the form permits two, but your job is to transcribe what is on the page, not to enforce that rule. `Grievance and Reconciliation` is appointed by the Board and is never printed on this form at all; if you see it ticked anyway, still mark the `X` — do not erase it — and AEGIS will flag it for the reviewer automatically. |
+| Committee columns (`Sunshine` through `Food`, plus `Grievance and Reconciliation`) | Mark `X` in a column if that box is ticked on the form; otherwise leave the cell blank. Include **every** box that is ticked, even if more than two — the form asks for two, but your job is to transcribe what is on the page, not to enforce that rule. AEGIS itself no longer enforces it either: it warns the reviewer past two but stages and approves the row regardless (real forms have ticked three and four, and the church accepted them). `Grievance and Reconciliation` is appointed by the Board and is never printed on this form at all; if you see it ticked anyway, still mark the `X` — do not erase it — and AEGIS will flag it for the reviewer automatically. |
 | `Confidence` | Required — always `high`, `medium` or `low` for the form overall, never blank. This is what the reviewer checks first, so it must always be present. |
 | `Flagged Fields` | One entry per doubtful field, in the form `Column Header: what you read and why`, e.g. `Date of Birth: read as OCT 14 1092, year digit unclear`. Separate multiple entries with ` \| ` (a space, a pipe, a space). Leave the cell blank if nothing about the row is uncertain. Use the *column header* on the left of the colon (`Date of Birth`, not `date_of_birth`) so AEGIS can attach the flag to the right field on the review screen. |
 | `Notes` | Anything a reviewer should know that doesn't fit `Flagged Fields`. Blank if nothing. |
@@ -87,7 +87,7 @@ a checkbox on this form — see the committee-column rule above.
 
 **Flag these specifically** — they occur often and a reviewer must catch them:
 
-- More than two committee columns ticked. The form permits two.
+- More than two committee columns ticked. The form asks for two; AEGIS will warn about it but will not refuse the row, so flag it anyway in case it's a misread rather than a genuine over-tick.
 - A phone number written in a name column, or a name in a number column.
 - A date that cannot be right — 29 February in a non-leap year, a future birth year.
 - A child's entry overwritten or corrected on the page.
@@ -139,9 +139,16 @@ months later. When a match is uncertain — the same name with a different or mi
 or more than one candidate — AEGIS refuses to guess and asks you to correct the entry instead of
 silently creating a duplicate or silently linking the wrong person.
 
-AEGIS re-checks the church's own rules on approval — at most two committees per member, one
-chairperson per committee, valid dates. A row the AI faithfully transcribed can still be refused,
-because the paper itself was wrong. That refusal is information, not a bug.
+AEGIS re-checks the church's own rules on approval — one chairperson per committee, valid dates.
+A row the AI faithfully transcribed can still be refused, because the paper itself was wrong (two
+people down as chairperson of the same committee at once, or a birth date that cannot be real).
+That refusal is information, not a bug.
+
+More than two committees ticked is different: AEGIS shows you a warning on the review screen, but
+it never refuses the row for it. The two-committee line is a limit printed on the form, not a fact
+about the data, and the church has already accepted real forms — four of the first thirty
+collected — that ticked three or four. Use the warning to check whether it reflects the paper or a
+transcription slip, then approve either way.
 
 Membership status is not part of the spreadsheet at all, on purpose: the AI (and the sheet)
 transcribes what is on the page, but whether someone counts as a `Member`, a `Child` in the

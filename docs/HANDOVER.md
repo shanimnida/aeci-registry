@@ -620,3 +620,33 @@ Ruling: R31 — date validation placed on Person.clean(), Household.clean() and
 S1-S4 also fixed: upload size cap, RecursionError caught as a graceful validation error, AccessLog
   written on import review, re-upload detected by content hash and warned (not blocked), and the
   duplicate warning moved to before approval instead of after.
+
+=== COMMITTEE CAP: HARD BLOCK TO WARNING (285 tests) ===
+Ruling: R32 — CommitteeMembership's "max two self-selected committees" rule (spec §3.3, rule 1)
+  changed from a hard refusal to a soft warning. Reality disagreed with the printed form: of the
+  first thirty profiling forms collected, four (IMG_5874, IMG_5885, IMG_5893, IMG_5894) ticked
+  three or four committees, and the church accepted those forms as filed. "Select up to TWO (2)"
+  is church policy printed on a form, not a structural fact about the data the way "a committee
+  cannot have two chairpersons at once" is — software refusing to save what the church itself
+  already accepted was the software being wrong, not the form. Ratified on the volunteer's own
+  words: "this shouldnt be a problem." The one-chairperson-per-committee rule (rule 2) was
+  deliberately left untouched — it stays a hard refusal, on purpose, because it is a different
+  kind of rule.
+  `CommitteeMembership._check_self_selected_limit` (raised ValidationError, called from clean())
+  was replaced by `self_selected_overflow_count()` (returns the overflow count or None, never
+  raises, not called from clean() at all). The warning now surfaces in two places: committees/
+  admin.py's CommitteeMembershipAdmin.save_model, in the same shape as people/admin.py's existing
+  duplicate-person warning (find_possible_duplicates); and imports/services.py's new
+  committee_cap_warning(data), shown on the import review screen before the reviewer approves,
+  same timing as MINOR 8's duplicate warning. Every test that asserted the old refusal was
+  rewritten to assert the save succeeds and the warning fires, not deleted — including a
+  four-committee case (IMG_5893's shape, fictional data) and a future-departure case proving
+  _has_ended()'s guard still keeps a scheduled-but-not-yet-ended membership counted. The seed_
+  officers management command's own third-committee test was updated the same way; its docstring
+  and help text no longer cite the cap as a business rule the command can fail a row on.
+  Docs corrected, not rewritten: spec §3.3, the Global Constraints table, and the Testing table
+  now state the rule as a warning and record why it changed; docs/IMPORT_TEMPLATE.md no longer
+  tells the AI/volunteer that AEGIS refuses on approval for this. Cost if wrong: a member could
+  now accumulate self-selected committees indefinitely with only a message on save to notice it —
+  mitigated by the warning firing in both the admin and the import review screen, and by rule 2
+  (structural, not policy) staying a hard refusal.

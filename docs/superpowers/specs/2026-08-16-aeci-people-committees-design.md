@@ -290,13 +290,27 @@ rows, so the layer is optional.
 | `date_joined` | DateField | |
 | `date_left` | DateField | null — active while null |
 
-Validation rules, enforced in `clean()` so they surface as ordinary admin form errors:
+Validation rules, in `clean()`. Rules 2–4 are hard refusals, surfacing as ordinary
+admin form errors. Rule 1 is a soft warning only — see the amendment below.
 
-1. **Max two self-selected committees.** A person may hold at most two *active*
-   memberships with `role=MEMBER` on committees where `is_self_selectable=True`.
-   Appointed roles (`CHAIRPERSON`, `CO_CHAIR`, `OVERSIGHT`) are exempt — otherwise
-   chairing Grievance would consume one of Diego's two picks.
-2. **One active chairperson per committee.**
+1. **Max two self-selected committees — soft, amended 2026-08-17.** The profiling
+   form prints "select up to TWO (2) committees you wish to be part of," and AEGIS
+   counts a person's active memberships with `role=MEMBER` on committees where
+   `is_self_selectable=True` against that limit. Appointed roles (`CHAIRPERSON`,
+   `CO_CHAIR`, `OVERSIGHT`) are exempt — otherwise chairing Grievance would consume
+   one of Diego's two picks. **This used to be a hard refusal — a third such
+   membership could not be saved.** It no longer is. Of the first thirty profiling
+   forms collected, four (`IMG_5874`, `IMG_5885`, `IMG_5893`, `IMG_5894`) ticked
+   three or four committees, and the church accepted those forms as filed. The
+   two-committee line is a policy printed on a form, not a structural fact about
+   the data the way rule 2 below is — software refusing to save what the church
+   itself already accepted was the software being wrong, not the form. AEGIS still
+   tells whoever is recording the membership that the count is over two
+   (`CommitteeMembership.self_selected_overflow_count`, shown as a warning in the
+   admin and on the import review screen), but it never blocks the save.
+2. **One active chairperson per committee — hard.** Two people simultaneously
+   chairing the same committee is structurally incoherent, not merely against
+   policy, so this still refuses.
 3. `function`, if set, must belong to `committee`.
 4. `OVERSIGHT` requires an active Board `Appointment` for that person.
 
@@ -496,7 +510,7 @@ away and back.
 | --- | --- |
 | `MEM-` assignment | Auto-suggests the next free number, **overridable** — many paper forms already carry a handwritten one |
 | Duplicate detection | Soft warning on similar name plus birthdate. Never a hard block; two people genuinely can share a name |
-| Max-two committees | Model-level validation surfacing as a normal form error |
+| Max-two committees | Soft warning past two (§3.3, amended 2026-08-17). Never a hard block; the printed cap is church policy, and the church has already accepted forms that ticked more |
 | Child already present | Where a child was captured from a sibling's form, search offers the existing `Person` rather than creating a second |
 | Search | By name, `MEM-`, mobile number, or committee |
 
@@ -720,7 +734,7 @@ parametrised.
 | Permissions | Each of five groups × each capability, positive and negative |
 | Row-level scoping | A chairperson sees own roster only; sees no other committee |
 | Field-level scoping | Address, birthdate, civil status, family absent from chairperson views |
-| Committee rules | Max-two cap; appointed roles exempt; one chairperson per committee; function belongs to committee |
+| Committee rules | Max-two cap warns rather than refuses (amended 2026-08-17); appointed roles exempt; one chairperson per committee still refused; function belongs to committee |
 | Control numbers | `MEM-` uniqueness, sequence allocation, manual override, concurrent allocation under `select_for_update` |
 | Status transitions | `status_changed_at` stamped; `approved_by` required when *changing* to `MEMBER`; **not** required when *creating* at `MEMBER` (§3.2.2) — the backlog must stay encodable |
 | Appointments | Unique-holder positions cannot overlap |

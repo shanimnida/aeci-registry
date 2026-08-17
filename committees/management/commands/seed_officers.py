@@ -21,11 +21,13 @@ REQUIRED_COLUMNS = {
 # Holding two of these at once is the anomaly worth stopping a human to
 # look at -- a spreadsheet's committee_code cell most likely got edited to
 # move someone. MEMBER and OVERSIGHT are deliberately excluded: a second
-# active MEMBER role on a different self-selectable committee is legal
-# (the two-committee cap in CommitteeMembership.clean() already allows and
-# enforces it), and OVERSIGHT has its own active-Board-appointment rule.
-# The model is the authority on what's valid; this command only catches
-# the one case the model's per-committee rules can't see on their own.
+# (or third, or fourth) active MEMBER role on a different self-selectable
+# committee is legal -- CommitteeMembership no longer refuses any number of
+# these, only warns above the profiling form's printed cap of two (see
+# CommitteeMembership.self_selected_overflow_count) -- and OVERSIGHT has its
+# own active-Board-appointment rule. The model is the authority on what's
+# valid; this command only catches the one case the model's per-committee
+# rules can't see on their own.
 ROLES_LIMITED_TO_ONE_COMMITTEE = {CommitteeRole.CHAIRPERSON, CommitteeRole.CO_CHAIR}
 
 
@@ -44,9 +46,10 @@ class Command(BaseCommand):
         "recorded status untouched no matter what the CSV says. Every "
         "Person and CommitteeMembership is validated with full_clean() "
         "before it is saved, so a row that would break a business rule (a "
-        "second Chairperson for a committee, more than two self-selected "
-        "committees, and so on) is reported by row number and skipped "
-        "rather than silently applied or half-saved; the command exits "
+        "second Chairperson for a committee, Board Oversight for someone "
+        "with no active Board appointment, and so on) is reported by row "
+        "number and skipped rather than silently applied or half-saved; "
+        "the command exits "
         "non-zero if any row failed."
     )
 

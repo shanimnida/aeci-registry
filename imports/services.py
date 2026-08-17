@@ -2,13 +2,16 @@
 
 Every object built here is full_clean()-ed before it is saved, and the
 whole thing runs inside one transaction. If any piece is refused -- an
-impossible date, a third self-selected committee, a second chairperson --
-nothing written by this call survives: the caller catches the
-ValidationError, shows it against that person, and the row stays pending.
-This is the one non-admin write path the church's committee rules (at most
-two self-selected committees, one chairperson per committee) have to be
-enforced against, since those rules live in CommitteeMembership.clean() and
-nowhere else.
+impossible date, a second chairperson -- nothing written by this call
+survives: the caller catches the ValidationError, shows it against that
+person, and the row stays pending. This is the one non-admin write path
+the church's hard committee rule (one chairperson per committee) has to be
+enforced against, since that rule lives in CommitteeMembership.clean() and
+nowhere else. The self-selected committee cap ("select up to TWO (2)") is
+no longer one of these refusals -- since 2026-08-17 it is a soft warning
+computed by committee_cap_warning, below, shown on the review screen
+before the reviewer approves. See
+CommitteeMembership.self_selected_overflow_count for why.
 
 CRITICAL 1 (2026-08-16 import fixes): the Member Profiling Form is filled in
 once per adult, and both parents' forms list the same children -- that is
@@ -29,6 +32,8 @@ from django.utils import timezone
 
 from committees.models import Committee, CommitteeMembership, CommitteeRole
 from people.models import Household, HouseholdMember, HouseholdRole, MembershipStatus, Person
+
+from .parsing import SELF_SELECTABLE_COMMITTEE_NAMES
 
 
 def _split_child_name(full_name: str, parent_last_name: str) -> tuple[str, str]:
@@ -315,3 +320,36 @@ def possible_duplicate_warning(data: dict) -> str | None:
         return None
     names = ", ".join(str(candidate) for candidate in matches[:3])
     return f"This may duplicate an existing record: {names}. Check before approving."
+
+
+def committee_cap_warning(data: dict) -> str | None:
+    """Mirrors possible_duplicate_warning above: a soft warning computed from
+    a staged row's own field values, so the reviewer sees it on the review
+    screen before approving, rather than after -- the same reasoning MINOR 8
+    used for the duplicate warning.
+
+    This person is always brand new (build_person_from_import never matches
+    the row's primary subject against an existing Person), so the ticked
+    `committees` list on this row *is* the person's whole self-selected
+    count -- no need to query existing memberships the way
+    CommitteeMembership.self_selected_overflow_count does for the general
+    case. `Grievance and Reconciliation` is excluded from the count: it is
+    not self-selectable (docs/IMPORT_TEMPLATE.md), so a stray tick of it
+    does not use up one of the form's two self-selected slots.
+
+    Never blocks: the cap is church policy printed on the form, not a
+    structural fact about the data, and the church has already accepted
+    real forms (four of the first thirty collected) that ticked more than
+    two. See CommitteeMembership.self_selected_overflow_count for the full
+    reasoning.
+    """
+    committees = [
+        name for name in (data.get("committees") or []) if name in SELF_SELECTABLE_COMMITTEE_NAMES
+    ]
+    limit = CommitteeMembership.SELF_SELECTED_LIMIT
+    if len(committees) <= limit:
+        return None
+    return (
+        f"This person ticked {len(committees)} committees. The profiling form asks "
+        f"for up to {limit}. Check this reflects the paper before approving."
+    )

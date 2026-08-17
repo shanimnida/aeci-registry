@@ -129,7 +129,11 @@ class CommitteeMembershipQuerySet(models.QuerySet):
 
 
 class CommitteeMembership(TimeStampedModel):
-    # Spec section 3.3: the profiling form says "select up to TWO (2)".
+    # Spec section 3.3: the profiling form prints "select up to TWO (2)
+    # committees you wish to be part of." That is church policy printed on
+    # a form, not a structural fact about the data -- see
+    # self_selected_overflow_count() below for why it is no longer a hard
+    # cap.
     SELF_SELECTED_LIMIT = 2
 
     # Appointed roles do not consume a self-selected slot.
@@ -178,9 +182,14 @@ class CommitteeMembership(TimeStampedModel):
         super().clean()
         self._check_dates_are_ordered()
         self._check_function_belongs_to_committee()
-        self._check_self_selected_limit()
         self._check_single_chairperson()
         self._check_oversight_is_on_the_board()
+        # The self-selected committee cap used to be checked here too, as a
+        # hard refusal (self._check_self_selected_limit(), removed
+        # 2026-08-17). It no longer blocks the save -- see
+        # self_selected_overflow_count()'s docstring for why. Callers that
+        # want to warn about it (committees/admin.py, imports/services.py)
+        # call that method directly instead.
 
     def _check_dates_are_ordered(self):
         """Mirrors Appointment.clean(): a transposed date must be rejected here too.
@@ -221,24 +230,43 @@ class CommitteeMembership(TimeStampedModel):
                 {"function": f"{self.function.name} is not part of {self.committee.name}."}
             )
 
-    def _check_self_selected_limit(self):
+    def self_selected_overflow_count(self) -> int | None:
+        """The person's total active, self-selected, `role=MEMBER` committee
+        count -- including this membership -- if it exceeds
+        SELF_SELECTED_LIMIT; else None.
+
+        Until 2026-08-17 this logic lived in `_check_self_selected_limit`,
+        called from `clean()`, and it *raised* -- a third self-selected
+        committee could not be saved at all. It no longer does: of the
+        first thirty profiling forms collected, four (IMG_5874, IMG_5885,
+        IMG_5893, IMG_5894) ticked three or four committees, and the church
+        accepted those forms as filed. "Select up to TWO (2)" is a policy
+        printed on the paper form, not a structural fact about the data the
+        way "a committee cannot have two chairpersons at once" is --
+        software refusing to save what the church itself already accepted
+        was the software being wrong, not the form.
+
+        So this only ever informs now. Callers (committees/admin.py's
+        save_model, imports/services.py's committee_cap_warning) use the
+        return value to tell a reviewer "N committees; the form asks for
+        two," the same way people.admin.find_possible_duplicates warns
+        about a possible duplicate person without blocking the save. Never
+        raises.
+        """
         if self.role in self.APPOINTED_ROLES or self._has_ended():
-            return
+            return None
         if not self.committee.is_self_selectable:
-            return
-        existing = (
+            return None
+        count = (
             CommitteeMembership.objects.active()
             .filter(person=self.person, role=CommitteeRole.MEMBER)
             .filter(committee__is_self_selectable=True)
             .exclude(pk=self.pk)
             .count()
-        )
-        if existing >= self.SELF_SELECTED_LIMIT:
-            raise ValidationError(
-                f"{self.person.full_name} already serves on "
-                f"{self.SELF_SELECTED_LIMIT} committees. A member may choose up to two. "
-                f"End an existing membership first."
-            )
+        ) + 1
+        if count > self.SELF_SELECTED_LIMIT:
+            return count
+        return None
 
     def _check_single_chairperson(self):
         if self.role != CommitteeRole.CHAIRPERSON or self._has_ended():

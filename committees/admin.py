@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db.models.constants import LOOKUP_SEP
 from simple_history.admin import SimpleHistoryAdmin
@@ -44,6 +44,23 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_filter = ("committee", "role")
     search_fields = ("person__last_name", "person__first_name")
     autocomplete_fields = ("person", "committee", "function")
+
+    def save_model(self, request, obj, form, change):
+        # A soft warning, never a block -- same shape as
+        # people.admin.PersonAdmin.save_model's duplicate-person warning.
+        # See CommitteeMembership.self_selected_overflow_count for why the
+        # cap stopped being a hard refusal on 2026-08-17.
+        overflow = obj.self_selected_overflow_count()
+        if overflow is not None:
+            self.message_user(
+                request,
+                f"{obj.person.full_name} now serves on {overflow} self-selected "
+                f"committees. The profiling form asks for up to "
+                f"{obj.SELF_SELECTED_LIMIT}. Saved anyway — check against the "
+                "paper form if this looks wrong.",
+                level=messages.WARNING,
+            )
+        super().save_model(request, obj, form, change)
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)

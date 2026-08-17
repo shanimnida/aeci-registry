@@ -121,36 +121,90 @@ def test_approving_one_person_creates_exactly_that_person_household_children_and
 
 
 @pytest.mark.django_db
-def test_approving_a_person_who_ticked_three_committees_fails_validation_and_stays_pending(
+def test_approving_a_person_who_ticked_three_committees_saves_and_shows_a_warning(
     client, secretariat_user, staged_batch
 ):
+    """2026-08-17: the committee cap stopped being a hard refusal -- the
+    profiling form's own printed 'select up to TWO (2)' is church policy,
+    not a structural fact, and the church already accepted real forms
+    (four of the first thirty collected) that ticked more than two. A row
+    that ticks three must now save on approval; the reviewer must still be
+    told about it, but on the review screen before approving (like the
+    duplicate-person warning), not as a refusal after.
+    """
     batch, rows = staged_batch
     row = rows["MANGUBATELENA"]  # three committees ticked
     client.force_login(secretariat_user)
 
+    get_response = client.get(_review_url(batch, row))
+    assert get_response.status_code == 200
+    body = get_response.content.decode()
+    assert "ticked 3 committees" in body
+    assert "up to 2" in body
+
     post = _base_post_data(row)
     assert len(post["committees"]) == 3
     response = client.post(_review_url(batch, row), post)
-    assert response.status_code == 200  # re-rendered, not redirected
+    assert response.status_code == 302  # redirected -- approved, not refused
 
-    assert Person.objects.count() == 0
-    assert Household.objects.count() == 0
-    assert CommitteeMembership.objects.count() == 0
+    person = Person.objects.get(last_name="Mangubat")
+    assert CommitteeMembership.objects.filter(person=person).count() == 3
+    assert Household.objects.count() == 1
 
     row.refresh_from_db()
-    assert row.status == StagedPersonStatus.PENDING
-    assert row.error_message  # a reason is recorded
-    assert "two" in row.error_message.lower() or "2" in row.error_message
-
-    body = response.content.decode()
-    assert row.error_message in body
+    assert row.status == StagedPersonStatus.APPROVED
+    assert row.created_person == person
 
 
 @pytest.mark.django_db
-def test_a_reviewer_can_correct_a_field_before_approving(client, secretariat_user, staged_batch):
-    """The fields are editable so the reviewer corrects rather than rejects
-    -- proven here by dropping one of the three ticked committees so the
-    person who would otherwise fail validation is approved instead."""
+def test_approving_a_person_who_ticked_four_committees_also_saves_and_warns(
+    client, secretariat_user
+):
+    """Real forms didn't stop at three: some of the batch that prompted this
+    change ticked four. A fictional four-committee row (never the real
+    member data in form images/) proves the relaxed cap keeps working past
+    three, not just for the one-over case.
+    """
+    batch = ImportBatch.objects.create(source_filename="fictional_batch.json")
+    row = StagedPerson.objects.create(
+        batch=batch,
+        sequence=0,
+        raw_data={
+            "source_image": "FICTIONAL_0001.jpg",
+            "last_name": "Bautista",
+            "first_name": "Marites",
+            "form_version": "v1",
+            "committees": ["Music and Arts", "Children's Ministry", "Youth", "Events"],
+        },
+    )
+    client.force_login(secretariat_user)
+
+    get_response = client.get(_review_url(batch, row))
+    assert get_response.status_code == 200
+    body = get_response.content.decode()
+    assert "ticked 4 committees" in body
+    assert "up to 2" in body
+
+    post = _base_post_data(row)
+    assert len(post["committees"]) == 4
+    response = client.post(_review_url(batch, row), post)
+    assert response.status_code == 302  # redirected -- approved, not refused
+
+    person = Person.objects.get(last_name="Bautista")
+    assert CommitteeMembership.objects.filter(person=person).count() == 4
+
+    row.refresh_from_db()
+    assert row.status == StagedPersonStatus.APPROVED
+    assert row.created_person == person
+
+
+@pytest.mark.django_db
+def test_a_reviewer_can_correct_the_committees_before_approving(
+    client, secretariat_user, staged_batch
+):
+    """Every field on this screen, committees included, stays editable --
+    proven by having the reviewer untick one of the three the AI read for
+    this row and confirming exactly the edited set is what gets saved."""
     batch, rows = staged_batch
     row = rows["MANGUBATELENA"]
     client.force_login(secretariat_user)

@@ -16,7 +16,7 @@ from records.models import AccessLog
 from .forms import ChildFormSet, StagedPersonForm, UploadForm, children_initial, initial_from_data
 from .models import ImportBatch, StagedPerson, StagedPersonStatus
 from .parsing import ImportValidationError
-from .services import build_person_from_import, possible_duplicate_warning
+from .services import build_person_from_import, committee_cap_warning, possible_duplicate_warning
 from .spreadsheet import parse_import_file, write_blank_template_bytes
 
 
@@ -415,8 +415,12 @@ class ImportBatchAdmin(ModelAdmin):
         # here, from the row's own field values, it shows on the review
         # screen itself, before the reviewer decides.
         duplicate_warning = None
+        committee_warning = None
         if not read_only:
             duplicate_warning = possible_duplicate_warning(row.effective_data)
+            # Same reasoning, same timing -- see committee_cap_warning's
+            # docstring for why this no longer refuses at approval.
+            committee_warning = committee_cap_warning(row.effective_data)
 
         # Field-level flags, moved onto the fields themselves (see
         # review.html / _field.html) instead of a separate block the
@@ -454,6 +458,7 @@ class ImportBatchAdmin(ModelAdmin):
             "other_flags": other_flags,
             "confidence": row.raw_data.get("confidence"),
             "duplicate_warning": duplicate_warning,
+            "committee_warning": committee_warning,
             "form": form,
             "formset": formset,
             "read_only": read_only,
