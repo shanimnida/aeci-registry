@@ -1,0 +1,90 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="mb-6">
+    <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight mb-1">
+        {{ batch }}
+    </div>
+    <p class="text-sm text-base-500 dark:text-base-400">
+        Uploaded by {{ batch.uploaded_by|default:"—" }}. Nothing below is in the register until
+        it shows as Approved — you can stop here and come back any time; every Pending row is
+        still waiting for you.
+    </p>
+</div>
+
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500">Total</div>
+        <div class="text-2xl font-semibold text-font-important-light dark:text-font-important-dark">{{ counts.total }}</div>
+    </div>
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500">Pending</div>
+        <div class="text-2xl font-semibold text-font-important-light dark:text-font-important-dark">{{ counts.pending }}</div>
+    </div>
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-green-700 dark:text-green-400">Approved</div>
+        <div class="text-2xl font-semibold text-green-700 dark:text-green-400">{{ counts.approved }}</div>
+    </div>
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-red-700 dark:text-red-400">Rejected</div>
+        <div class="text-2xl font-semibold text-red-700 dark:text-red-400">{{ counts.rejected }}</div>
+    </div>
+</div>
+
+{% if next_row %}
+    <a href="{% url 'admin:imports_importbatch_review' batch.pk next_row.pk %}" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer mb-6">
+        Continue reviewing ({{ counts.pending }} pending)
+    </a>
+{% else %}
+    <div class="bg-green-50 border border-green-200 dark:bg-green-500/10 dark:border-green-900 rounded-default p-4 mb-6 text-sm text-green-700 dark:text-green-400">
+        Every entry in this batch has been decided.
+    </div>
+{% endif %}
+
+<div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-base-50 dark:bg-base-800 text-left text-xs uppercase text-base-400 dark:text-base-500">
+            <tr>
+                <th class="px-4 py-3">#</th>
+                <th class="px-4 py-3">Name</th>
+                <th class="px-4 py-3">Source image</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-base-200 dark:divide-base-800">
+            {% for row in rows %}
+                <tr>
+                    <td class="px-4 py-3 text-base-400">{{ row.sequence|add:1 }}</td>
+                    <td class="px-4 py-3 text-important">
+                        {{ row }}
+                        {% if row.error_message %}
+                            <div class="text-xs text-red-600 dark:text-red-500 mt-1">{{ row.error_message }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-base-400">{{ row.raw_data.source_image|default:"—" }}</td>
+                    <td class="px-4 py-3">
+                        {% if row.status == "PENDING" %}
+                            <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded-xs bg-base-100 text-base-700 dark:bg-base-500/20 dark:text-base-400">Pending</span>
+                        {% elif row.status == "APPROVED" %}
+                            <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded-xs bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400">Approved</span>
+                        {% else %}
+                            <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded-xs bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400">Rejected</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        {% if row.status == "PENDING" %}
+                            <a href="{% url 'admin:imports_importbatch_review' batch.pk row.pk %}" class="text-primary-600 dark:text-primary-400 hover:underline">Review</a>
+                        {% elif row.created_person %}
+                            <a href="{% url 'admin:people_person_change' row.created_person.pk %}" class="text-primary-600 dark:text-primary-400 hover:underline">View person</a>
+                        {% else %}
+                            <a href="{% url 'admin:imports_importbatch_review' batch.pk row.pk %}" class="text-base-400 hover:underline">View</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

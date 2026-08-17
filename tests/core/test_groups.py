@@ -7,7 +7,11 @@ from core import groups
 # deliberately duplicated rather than imported -- migrations are not meant to
 # be imported as regular modules, and a test that imports the fix would not
 # notice if the fix and the test drifted apart in the same direction.
-APP_LABELS = ("people", "committees", "records", "core")
+# "imports" added by imports/migrations/0002_grant_group_permissions.py --
+# the same Gap 1 shape one app label later: a fresh app has no permission
+# rows until create_permissions runs, so ICT's "__all__" grant has to be
+# re-evaluated (there or here) every time a new app joins this list.
+APP_LABELS = ("people", "committees", "records", "core", "imports")
 PURGE_RECORD_WRITE_CODENAMES = ("add_purgerecord", "change_purgerecord", "delete_purgerecord")
 
 
@@ -59,6 +63,8 @@ def test_secretariat_permissions_exact():
         "view_committee", "view_committeefunction",
         "view_position", "view_appointment",
         "add_formscan", "change_formscan", "view_formscan",
+        "add_importbatch", "view_importbatch", "delete_importbatch",
+        "add_stagedperson", "view_stagedperson", "change_stagedperson",
     }
 
 

@@ -1,0 +1,49 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="max-w-2xl">
+    <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight mb-2">
+        Upload member profiling import
+    </div>
+    <p class="text-sm text-base-500 dark:text-base-400 mb-6">
+        Upload the JSON file the AI produced from the photographed profiling forms. AEGIS will
+        check its shape and, if it is well formed, stage one entry per person for you to review
+        one at a time. <strong>Nothing is added to the register yet</strong> — that only happens
+        when you approve a person on the next screen.
+    </p>
+
+    {% if errors %}
+        <div class="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-900 rounded-default p-4 mb-6">
+            <div class="font-semibold text-red-700 dark:text-red-400 mb-2">
+                This file could not be staged. Nothing was imported. Fix the problem(s) below —
+                in the file itself, or by asking the AI to redo the affected form(s) — and upload again.
+            </div>
+            <ul class="list-disc pl-5 text-sm text-red-700 dark:text-red-400 space-y-1">
+                {% for error in errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-6">
+        {% csrf_token %}
+        <div class="mb-4">
+            <label for="{{ form.file.id_for_label }}" class="block font-semibold text-font-important-light dark:text-font-important-dark text-sm mb-2">
+                {{ form.file.label }}
+            </label>
+            {{ form.file }}
+            {% if form.file.errors %}
+                <div class="text-xs text-red-600 dark:text-red-500 mt-2">{{ form.file.errors|striptags }}</div>
+            {% endif %}
+        </div>
+        <button type="submit" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer">
+            Upload and stage
+        </button>
+        <a href="{% url 'admin:imports_importbatch_changelist' %}" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent dark:hover:bg-base-800/80 cursor-pointer">
+            Cancel
+        </a>
+    </form>
+</div>
+{% endblock %}

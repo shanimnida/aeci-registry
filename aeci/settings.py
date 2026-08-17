@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "people",
     "committees",
     "records",
+    "imports",
 ]
 
 # AEGIS admin theme (django-unfold). Purely cosmetic: site branding, a real
@@ -87,6 +88,20 @@ UNFOLD = {
                         "link": reverse_lazy("admin:people_household_changelist"),
                         "permission": lambda request: request.user.has_perm(
                             "people.view_household"
+                        ),
+                    },
+                ],
+            },
+            {
+                "title": _("Import"),
+                "separator": True,
+                "items": [
+                    {
+                        "title": _("Profiling form import"),
+                        "icon": "upload_file",
+                        "link": reverse_lazy("admin:imports_importbatch_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "imports.view_importbatch"
                         ),
                     },
                 ],

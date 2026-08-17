@@ -1,0 +1,213 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <div>
+        <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight">
+            {{ row }}
+        </div>
+        <a href="{% url 'admin:imports_importbatch_change' batch.pk %}" class="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+            &larr; Back to {{ batch }} ({{ counts.pending }} pending)
+        </a>
+    </div>
+    <div class="text-sm text-base-400 dark:text-base-500 text-right">
+        Entry {{ row.sequence|add:1 }}
+    </div>
+</div>
+
+{% if row.status == "APPROVED" %}
+    <div class="bg-green-50 border border-green-200 dark:bg-green-500/10 dark:border-green-900 rounded-default p-4 mb-6 text-sm text-green-700 dark:text-green-400">
+        Approved{% if row.reviewed_by %} by {{ row.reviewed_by }}{% endif %}{% if row.reviewed_at %} on {{ row.reviewed_at|date:"Y-m-d H:i" }}{% endif %}.
+        {% if row.created_person %}
+            <a href="{% url 'admin:people_person_change' row.created_person.pk %}" class="underline font-semibold">View the person record.</a>
+        {% endif %}
+    </div>
+{% elif row.status == "REJECTED" %}
+    <div class="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-900 rounded-default p-4 mb-6 text-sm text-red-700 dark:text-red-400">
+        Rejected{% if row.reviewed_by %} by {{ row.reviewed_by }}{% endif %}{% if row.reviewed_at %} on {{ row.reviewed_at|date:"Y-m-d H:i" }}{% endif %}.
+        No person was created for this entry.
+    </div>
+{% elif row.error_message %}
+    <div class="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-900 rounded-default p-4 mb-6">
+        <div class="font-semibold text-red-700 dark:text-red-400">This could not be approved as entered:</div>
+        <div class="text-sm text-red-700 dark:text-red-400 mt-1">{{ row.error_message }}</div>
+        <div class="text-xs text-red-600/80 dark:text-red-400/80 mt-2">
+            Correct the field(s) below and try Approve again, or Skip / Reject this entry.
+        </div>
+    </div>
+{% endif %}
+
+<div class="bg-primary-50 border border-primary-200 dark:bg-primary-500/10 dark:border-primary-900 rounded-default p-4 mb-6">
+    <div class="flex flex-wrap gap-6 items-start">
+        <div>
+            <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500">AI confidence</div>
+            <div class="text-lg font-semibold
+                {% if confidence == "high" %}text-green-700 dark:text-green-400
+                {% elif confidence == "medium" %}text-orange-700 dark:text-orange-400
+                {% else %}text-red-700 dark:text-red-400{% endif %}">
+                {{ confidence|default:"—"|capfirst }}
+            </div>
+        </div>
+        <div class="grow min-w-[240px]">
+            <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500 mb-1">Uncertain fields — check these first</div>
+            {% if uncertain_fields %}
+                <ul class="text-sm space-y-1">
+                    {% for item in uncertain_fields %}
+                        <li>
+                            <span class="font-semibold">{{ item.field|default:"—" }}</span>
+                            {% if item.read_as %}— read as "{{ item.read_as }}"{% endif %}
+                            {% if item.why %}<span class="text-base-400 dark:text-base-500"> ({{ item.why }})</span>{% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="text-sm text-base-400 dark:text-base-500">None flagged.</div>
+            {% endif %}
+        </div>
+        {% if ai_notes %}
+            <div class="grow min-w-[240px]">
+                <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500 mb-1">Notes from the AI</div>
+                <div class="text-sm">{{ ai_notes }}</div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-6">
+        <div class="font-semibold text-[15px] text-important mb-4 pb-3 border-b border-base-200 dark:border-base-800">
+            What the AI read (source: {{ raw_data.source_image|default:"—" }}, form {{ raw_data.form_version|default:"—" }})
+        </div>
+        <dl class="text-sm grid grid-cols-2 gap-x-4 gap-y-3">
+            <dt class="text-base-400">Member no.</dt><dd>{{ raw_data.member_no|default:"—" }}</dd>
+            <dt class="text-base-400">Date filed</dt><dd>{{ raw_data.date_filed|default:"—" }}</dd>
+            <dt class="text-base-400">Last name</dt><dd>{{ raw_data.last_name|default:"—" }}</dd>
+            <dt class="text-base-400">First name</dt><dd>{{ raw_data.first_name|default:"—" }}</dd>
+            <dt class="text-base-400">Middle name</dt><dd>{{ raw_data.middle_name|default:"—" }}</dd>
+            <dt class="text-base-400">Suffix</dt><dd>{{ raw_data.suffix|default:"—" }}</dd>
+            <dt class="text-base-400">Date of birth</dt><dd>{{ raw_data.date_of_birth|default:"—" }}</dd>
+            <dt class="text-base-400">Place of birth</dt><dd>{{ raw_data.place_of_birth|default:"—" }}</dd>
+            <dt class="text-base-400">Gender</dt><dd>{{ raw_data.gender|default:"—" }}</dd>
+            <dt class="text-base-400">Civil status</dt><dd>{{ raw_data.civil_status|default:"—" }}</dd>
+            <dt class="text-base-400">Nationality</dt><dd>{{ raw_data.nationality|default:"—" }}</dd>
+            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Home address</dt>
+            <dd class="col-span-2">{{ raw_data.home_address|default:"—" }}</dd>
+            <dt class="text-base-400">Mobile number</dt><dd>{{ raw_data.mobile_number|default:"—" }}</dd>
+            <dt class="text-base-400">Email</dt><dd>{{ raw_data.email|default:"—" }}</dd>
+            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Spouse</dt>
+            <dd class="col-span-2">{{ raw_data.spouse_name|default:"—" }}{% if raw_data.date_of_marriage %} — married {{ raw_data.date_of_marriage }}{% endif %}</dd>
+            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Children</dt>
+            <dd class="col-span-2">
+                {% if raw_data.children %}
+                    <ul class="space-y-0.5">
+                        {% for child in raw_data.children %}
+                            <li>{{ child.full_name }}{% if child.date_of_birth %} ({{ child.date_of_birth }}){% endif %}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}—{% endif %}
+            </dd>
+            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Emergency contact</dt>
+            <dd class="col-span-2">
+                {{ raw_data.emergency_contact_name|default:"—" }}
+                {% if raw_data.emergency_relationship %}({{ raw_data.emergency_relationship }}){% endif %}
+                {% if raw_data.emergency_number %} — {{ raw_data.emergency_number }}{% endif %}
+            </dd>
+            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Committees ticked</dt>
+            <dd class="col-span-2">
+                {% if raw_data.committees %}{{ raw_data.committees|join:", " }}{% else %}—{% endif %}
+            </dd>
+            <dt class="text-base-400">Certification date</dt><dd>{{ raw_data.certification_date|default:"—" }}</dd>
+        </dl>
+    </div>
+
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-6">
+        <div class="font-semibold text-[15px] text-important mb-4 pb-3 border-b border-base-200 dark:border-base-800">
+            {% if read_only %}What was submitted{% else %}Your correction — edit anything before deciding{% endif %}
+        </div>
+
+        {% if read_only %}
+            <p class="text-sm text-base-400 dark:text-base-500">
+                This entry has already been decided, so it is shown for reference only.
+            </p>
+        {% else %}
+        <form method="post">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                {% include "admin/imports/importbatch/_field.html" with field=form.member_no %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.form_version %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.last_name %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.first_name %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.middle_name %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.suffix %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.date_of_birth %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.place_of_birth %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.gender %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.civil_status %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.nationality %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.membership_status %}
+            </div>
+            {% include "admin/imports/importbatch/_field.html" with field=form.home_address %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                {% include "admin/imports/importbatch/_field.html" with field=form.mobile_number %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.email %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.date_filed %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.certification_date %}
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
+                {% include "admin/imports/importbatch/_field.html" with field=form.emergency_contact_name %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.emergency_relationship %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.emergency_number %}
+            </div>
+
+            <div class="form-field flex flex-col gap-2 mb-4">
+                <label class="block font-semibold text-font-important-light dark:text-font-important-dark text-sm">Committees</label>
+                <div class="grid grid-cols-2 gap-1">
+                    {% for checkbox in form.committees %}
+                        <label class="flex items-center gap-2 text-sm">
+                            {{ checkbox.tag }} {{ checkbox.choice_label }}
+                        </label>
+                    {% endfor %}
+                </div>
+                {% if form.committees.errors %}
+                    <div class="text-xs text-red-600 dark:text-red-500">{{ form.committees.errors|striptags }}</div>
+                {% endif %}
+            </div>
+
+            <div class="mb-4">
+                <div class="font-semibold text-font-important-light dark:text-font-important-dark text-sm mb-2">Children</div>
+                {{ formset.management_form }}
+                {% if formset.forms %}
+                    <div class="space-y-2">
+                        {% for child_form in formset %}
+                            <div class="grid grid-cols-2 gap-2">
+                                {{ child_form.full_name }}
+                                {{ child_form.date_of_birth }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="text-xs text-base-400 dark:text-base-500 mt-1">Clear a name to drop that child.</div>
+                {% else %}
+                    <div class="text-sm text-base-400 dark:text-base-500">None recorded.</div>
+                {% endif %}
+            </div>
+
+            {% include "admin/imports/importbatch/_field.html" with field=form.notes %}
+
+            <div class="flex gap-3 pt-4 border-t border-base-200 dark:border-base-800">
+                <button type="submit" name="action" value="approve" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer">
+                    Approve
+                </button>
+                <button type="submit" name="action" value="skip" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent dark:hover:bg-base-800/80 cursor-pointer">
+                    Skip for now
+                </button>
+                <button type="submit" name="action" value="reject" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-red-600 bg-red-600 border-transparent text-white hover:bg-red-600/80 cursor-pointer ml-auto">
+                    Reject
+                </button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
