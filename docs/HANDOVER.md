@@ -1,10 +1,9 @@
 # AEGIS — build handover record
 
 Every decision taken on the church's behalf while building AEGIS, with what it costs if the
-decision was wrong. Recovered from the execution ledger so it survives the scratch workspace.
-Read the `Ruling:` lines first — those are the judgement calls, not the mechanical work.
+decision was wrong. Read the `Ruling:` lines first — those are the judgement calls.
 
-Branch: build/core-registry · 38 commits · 139 tests passing
+Branch: build/core-registry · 42 commits · 193 tests passing
 
 ---
 
@@ -567,3 +566,57 @@ Residual (reported, not fixed): Board's change_person is broader than the single
 Residual (reported, not fixed): the ICT permission grant is correct today but not self-maintaining
   — a model added by a future migration falls through the same crack again. Real fix is a
   post_migrate signal in core/apps.py.
+
+=== IMPORT FEATURE (commit 4671e81, 171 tests) — SECURITY BUG HUNT ===
+Verified clean by execution, not inference: chairperson 403 on all four import URLs including a
+hand-crafted POST; anonymous 302 to login; Treasurer and Board hold no imports permissions;
+CSRF token on every mutating form and no csrf_exempt anywhere; all AI-supplied text rendered
+through Django autoescaping with no |safe; source_image never used as a filesystem path.
+FINDINGS:
+ S1 Important — unbounded upload size. UploadForm.file has no size cap and admin reads the whole
+    file into memory before decode and json.loads. A 500MB .json is read entirely into RAM.
+ S2 Important — deeply nested JSON crashes with an uncaught RecursionError rather than the
+    graceful ImportValidationError the module promises. VERIFIED by calling parse_import_json()
+    directly with 10,000 levels of nesting.
+ S3 Important — staged PII has no audit trail. people/admin.py writes an AccessLog row on every
+    Person view; the import review screen renders the same class of data — name, DOB, address,
+    phone, email, children, emergency contact — and never calls AccessLog.record. Already-approved
+    and rejected rows stay readable indefinitely, still unlogged. This is a hole in exactly the
+    RA 10173 story the rest of the system is careful about.
+ S4 Minor/plausible (code shape, not executed) — TOCTOU on approve: no select_for_update or
+    status re-check under lock, so two concurrent approve POSTs could both see PENDING and create
+    two Person records.
+
+=== IMPORT FEATURE — CORRECTNESS BUG HUNT AND FIXES (commit 25175b1, 193 tests) ===
+Verified SAFE by the correctness hunt, no bug: approval atomicity (one transaction, rollback
+proven), full_clean() coverage on every created object with no bare objects.create(), and the
+membership_status/approved_by interaction on creation.
+CRITICALS FOUND AND FIXED:
+ C1 The same family in one batch produced duplicate children and split households. Both parents'
+    paper forms list the same children — that is how the form works — so approving a husband's row
+    then his wife's row created FOUR child records for two real children in two disconnected
+    households, with HouseholdRole.SPOUSE never assigned anywhere. This would have broken on the
+    very first real import of the user's 22 forms. Red run proved 6 Person rows where 4 were
+    expected.
+ C2 Double approval created a permanent untraceable duplicate person: the staged row was read
+    without a lock, read_only computed from that stale read, the whole person built, and status
+    written back only afterward. Red run used real threads against a real Postgres row lock and
+    produced two identical Person rows.
+Ruling: R30 — on the ambiguous-child-match case the implementer chose a hard refusal
+  (ValidationError) over a guess, because the review screen's only resolution path is correcting a
+  field and re-submitting, so a partial approval had nowhere to record "unresolved". Ratified:
+  refusing is consistent with this feature's whole premise that the human decides and the software
+  never guesses about people. Spouse-name ambiguity is treated more leniently (soft skip plus a
+  notice) since a wrong spouse link costs convenience, not correctness. Cost if wrong: a reviewer
+  meeting an ambiguous child must resolve it by hand before that person can be approved.
+Ruling: R31 — date validation placed on Person.clean(), Household.clean() and
+  HouseholdMember.clean() rather than in the importer, so every full_clean() write path including
+  the admin inlines is protected rather than this one importer. HouseholdMember is the only place a
+  household, a role and a specific person are all in hand for the cross-person checks. Scoped to
+  refusing the impossible (future birth, future marriage, marriage before birth, child older than
+  head) rather than the improbable, so a decades-old mis-keyed birth year on a paper form stays
+  encodable. Cost if wrong: a genuinely odd but real family arrangement could be refused and need
+  a correction before encoding.
+S1-S4 also fixed: upload size cap, RecursionError caught as a graceful validation error, AccessLog
+  written on import review, re-upload detected by content hash and warned (not blocked), and the
+  duplicate warning moved to before approval instead of after.
