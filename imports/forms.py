@@ -111,9 +111,12 @@ class StagedPersonForm(forms.Form):
         choices=MembershipStatus.choices, widget=UnfoldAdminSelectWidget
     )
 
-    notes = forms.CharField(
-        required=False, widget=UnfoldAdminTextareaWidget(attrs={"rows": 3})
-    )
+    # Deliberately no `notes` field. The AI's free-text `notes` was its own
+    # commentary about the form -- "the AI talking about the form rather
+    # than showing it" -- and the reviewer has the actual paper in hand,
+    # which is a better source than a machine's remarks about it. See
+    # review.html and the field-level flags below for where that
+    # information now lives instead.
 
 
 class ChildForm(forms.Form):
@@ -135,7 +138,7 @@ def initial_from_data(data: dict) -> dict:
                         "home_address", "mobile_number", "email", "spouse_name",
                         "emergency_contact_name",
                         "emergency_relationship", "emergency_number", "date_of_birth",
-                        "date_of_marriage", "date_filed", "certification_date", "notes"):
+                        "date_of_marriage", "date_filed", "certification_date"):
         if initial.get(text_field) is None:
             initial[text_field] = ""
     return initial

@@ -2,17 +2,43 @@
 {% load i18n %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-4">
-    <div>
-        <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight">
-            {{ row }}
+<div class="mb-6">
+    <a href="{% url 'admin:imports_importbatch_change' batch.pk %}" class="text-sm text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1 mb-3">
+        <span class="material-symbols-outlined md-16" aria-hidden="true">arrow_back</span>
+        Back to {{ batch }}
+    </a>
+
+    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <div>
+            <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight">
+                {{ row }}
+            </div>
+            <div class="text-sm text-base-500 dark:text-base-400 mt-1">
+                Source <span class="font-medium text-base-700 dark:text-base-300">{{ effective_data.source_image|default:"—" }}</span>
+                <span class="mx-1.5 text-base-300 dark:text-base-700">&middot;</span>
+                Form {{ effective_data.form_version|default:"—" }}
+                <span class="mx-1.5 text-base-300 dark:text-base-700">&middot;</span>
+                <span class="inline-flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full {% if confidence == "high" %}bg-green-600{% elif confidence == "medium" %}bg-amber-500{% else %}bg-red-600{% endif %}" aria-hidden="true"></span>
+                    AI confidence: {{ confidence|default:"—"|capfirst }}
+                </span>
+            </div>
         </div>
-        <a href="{% url 'admin:imports_importbatch_change' batch.pk %}" class="text-sm text-primary-600 dark:text-primary-400 hover:underline">
-            &larr; Back to {{ batch }} ({{ counts.pending }} pending)
-        </a>
-    </div>
-    <div class="text-sm text-base-400 dark:text-base-500 text-right">
-        Entry {{ row.sequence|add:1 }}
+
+        {% comment %}
+        "Where you are in the batch" -- one of the three things allowed
+        to be visually loud, so a reviewer working a stack always knows
+        how far in they are without going back to the list.
+        {% endcomment %}
+        <div class="text-right min-w-[220px]">
+            <div class="font-semibold text-sm text-font-important-light dark:text-font-important-dark">
+                Entry {{ row.sequence|add:1 }} of {{ counts.total }}
+            </div>
+            <div class="text-xs text-base-500 dark:text-base-400 mb-1.5">{{ counts.pending }} pending in this batch</div>
+            <div class="h-1.5 w-full sm:w-56 ml-auto rounded-full bg-base-100 dark:bg-base-800 overflow-hidden">
+                <div class="h-full bg-primary-600" style="width: {{ progress_percent }}%"></div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -44,180 +70,209 @@
     </div>
 {% endif %}
 
-<div class="bg-primary-50 border border-primary-200 dark:bg-primary-500/10 dark:border-primary-900 rounded-default p-4 mb-6">
-    <div class="flex flex-wrap gap-6 items-start">
-        <div>
-            <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500">AI confidence</div>
-            <div class="text-lg font-semibold
-                {% if confidence == "high" %}text-green-700 dark:text-green-400
-                {% elif confidence == "medium" %}text-orange-700 dark:text-orange-400
-                {% else %}text-red-700 dark:text-red-400{% endif %}">
-                {{ confidence|default:"—"|capfirst }}
-            </div>
-        </div>
-        <div class="grow min-w-[240px]">
-            <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500 mb-1">Uncertain fields — check these first</div>
-            {% if uncertain_fields %}
-                <ul class="text-sm space-y-1">
-                    {% for item in uncertain_fields %}
-                        <li>
-                            <span class="font-semibold">{{ item.field|default:"—" }}</span>
-                            {% if item.read_as %}— read as "{{ item.read_as }}"{% endif %}
-                            {% if item.why %}<span class="text-base-400 dark:text-base-500"> ({{ item.why }})</span>{% endif %}
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <div class="text-sm text-base-400 dark:text-base-500">None flagged.</div>
-            {% endif %}
-        </div>
-        {% if ai_notes %}
-            <div class="grow min-w-[240px]">
-                <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500 mb-1">Notes from the AI</div>
-                <div class="text-sm">{{ ai_notes }}</div>
-            </div>
-        {% endif %}
-    </div>
-</div>
+{% if read_only %}
+<div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-8 max-w-4xl">
+    <p class="text-sm text-base-500 dark:text-base-400 mb-8">
+        This entry has already been decided, so it is shown for reference only.
+    </p>
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-6">
-        <div class="font-semibold text-[15px] text-important mb-4 pb-3 border-b border-base-200 dark:border-base-800">
-            What the AI read (source: {{ raw_data.source_image|default:"—" }}, form {{ raw_data.form_version|default:"—" }})
-        </div>
-        <dl class="text-sm grid grid-cols-2 gap-x-4 gap-y-3">
-            <dt class="text-base-400">Member no.</dt><dd>{{ raw_data.member_no|default:"—" }}</dd>
-            <dt class="text-base-400">Date filed</dt><dd>{{ raw_data.date_filed|default:"—" }}</dd>
-            <dt class="text-base-400">Last name</dt><dd>{{ raw_data.last_name|default:"—" }}</dd>
-            <dt class="text-base-400">First name</dt><dd>{{ raw_data.first_name|default:"—" }}</dd>
-            <dt class="text-base-400">Middle name</dt><dd>{{ raw_data.middle_name|default:"—" }}</dd>
-            <dt class="text-base-400">Suffix</dt><dd>{{ raw_data.suffix|default:"—" }}</dd>
-            <dt class="text-base-400">Date of birth</dt><dd>{{ raw_data.date_of_birth|default:"—" }}</dd>
-            <dt class="text-base-400">Place of birth</dt><dd>{{ raw_data.place_of_birth|default:"—" }}</dd>
-            <dt class="text-base-400">Gender</dt><dd>{{ raw_data.gender|default:"—" }}</dd>
-            <dt class="text-base-400">Civil status</dt><dd>{{ raw_data.civil_status|default:"—" }}</dd>
-            <dt class="text-base-400">Nationality</dt><dd>{{ raw_data.nationality|default:"—" }}</dd>
-            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Home address</dt>
-            <dd class="col-span-2">{{ raw_data.home_address|default:"—" }}</dd>
-            <dt class="text-base-400">Mobile number</dt><dd>{{ raw_data.mobile_number|default:"—" }}</dd>
-            <dt class="text-base-400">Email</dt><dd>{{ raw_data.email|default:"—" }}</dd>
-            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Spouse</dt>
-            <dd class="col-span-2">{{ raw_data.spouse_name|default:"—" }}{% if raw_data.date_of_marriage %} — married {{ raw_data.date_of_marriage }}{% endif %}</dd>
-            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Children</dt>
-            <dd class="col-span-2">
-                {% if raw_data.children %}
-                    <ul class="space-y-0.5">
-                        {% for child in raw_data.children %}
-                            <li>{{ child.full_name }}{% if child.date_of_birth %} ({{ child.date_of_birth }}){% endif %}</li>
-                        {% endfor %}
-                    </ul>
-                {% else %}—{% endif %}
-            </dd>
-            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Emergency contact</dt>
-            <dd class="col-span-2">
-                {{ raw_data.emergency_contact_name|default:"—" }}
-                {% if raw_data.emergency_relationship %}({{ raw_data.emergency_relationship }}){% endif %}
-                {% if raw_data.emergency_number %} — {{ raw_data.emergency_number }}{% endif %}
-            </dd>
-            <dt class="text-base-400 col-span-2 pt-2 border-t border-base-100 dark:border-base-800">Committees ticked</dt>
-            <dd class="col-span-2">
-                {% if raw_data.committees %}{{ raw_data.committees|join:", " }}{% else %}—{% endif %}
-            </dd>
-            <dt class="text-base-400">Certification date</dt><dd>{{ raw_data.certification_date|default:"—" }}</dd>
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Personal information</h2>
+        <dl class="text-[15px] grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Member no.</dt><dd>{{ effective_data.member_no|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Last name</dt><dd>{{ effective_data.last_name|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">First name</dt><dd>{{ effective_data.first_name|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Middle name</dt><dd>{{ effective_data.middle_name|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Suffix</dt><dd>{{ effective_data.suffix|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Date of birth</dt><dd>{{ effective_data.date_of_birth|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Place of birth</dt><dd>{{ effective_data.place_of_birth|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Gender</dt><dd>{{ effective_data.gender|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Civil status</dt><dd>{{ effective_data.civil_status|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Nationality</dt><dd>{{ effective_data.nationality|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Membership status</dt><dd>{{ effective_data.membership_status|default:"—" }}</dd></div>
         </dl>
     </div>
 
-    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-6">
-        <div class="font-semibold text-[15px] text-important mb-4 pb-3 border-b border-base-200 dark:border-base-800">
-            {% if read_only %}What was submitted{% else %}Your correction — edit anything before deciding{% endif %}
-        </div>
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Contact</h2>
+        <dl class="text-[15px] space-y-4">
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Home address</dt><dd>{{ effective_data.home_address|default:"—" }}</dd></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Mobile number</dt><dd>{{ effective_data.mobile_number|default:"—" }}</dd></div>
+                <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Email</dt><dd>{{ effective_data.email|default:"—" }}</dd></div>
+            </div>
+        </dl>
+    </div>
 
-        {% if read_only %}
-            <p class="text-sm text-base-400 dark:text-base-500">
-                This entry has already been decided, so it is shown for reference only.
-            </p>
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Family</h2>
+        <dl class="text-[15px] grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 mb-4">
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Spouse</dt><dd>{{ effective_data.spouse_name|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Date of marriage</dt><dd>{{ effective_data.date_of_marriage|default:"—" }}</dd></div>
+        </dl>
+        <div class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Children</div>
+        {% if effective_data.children %}
+            <ul class="text-[15px] space-y-0.5 mb-4">
+                {% for child in effective_data.children %}
+                    <li>{{ child.full_name }}{% if child.date_of_birth %} ({{ child.date_of_birth }}){% endif %}</li>
+                {% endfor %}
+            </ul>
         {% else %}
-        <form method="post">
-            {% csrf_token %}
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-                {% include "admin/imports/importbatch/_field.html" with field=form.member_no %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.form_version %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.last_name %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.first_name %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.middle_name %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.suffix %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.date_of_birth %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.place_of_birth %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.gender %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.civil_status %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.nationality %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.membership_status %}
-            </div>
-            {% include "admin/imports/importbatch/_field.html" with field=form.home_address %}
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-                {% include "admin/imports/importbatch/_field.html" with field=form.mobile_number %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.email %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.date_filed %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.certification_date %}
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-                {% include "admin/imports/importbatch/_field.html" with field=form.spouse_name %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.date_of_marriage %}
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
-                {% include "admin/imports/importbatch/_field.html" with field=form.emergency_contact_name %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.emergency_relationship %}
-                {% include "admin/imports/importbatch/_field.html" with field=form.emergency_number %}
-            </div>
-
-            <div class="form-field flex flex-col gap-2 mb-4">
-                <label class="block font-semibold text-font-important-light dark:text-font-important-dark text-sm">Committees</label>
-                <div class="grid grid-cols-2 gap-1">
-                    {% for checkbox in form.committees %}
-                        <label class="flex items-center gap-2 text-sm">
-                            {{ checkbox.tag }} {{ checkbox.choice_label }}
-                        </label>
-                    {% endfor %}
-                </div>
-                {% if form.committees.errors %}
-                    <div class="text-xs text-red-600 dark:text-red-500">{{ form.committees.errors|striptags }}</div>
-                {% endif %}
-            </div>
-
-            <div class="mb-4">
-                <div class="font-semibold text-font-important-light dark:text-font-important-dark text-sm mb-2">Children</div>
-                {{ formset.management_form }}
-                {% if formset.forms %}
-                    <div class="space-y-2">
-                        {% for child_form in formset %}
-                            <div class="grid grid-cols-2 gap-2">
-                                {{ child_form.full_name }}
-                                {{ child_form.date_of_birth }}
-                            </div>
-                        {% endfor %}
-                    </div>
-                    <div class="text-xs text-base-400 dark:text-base-500 mt-1">Clear a name to drop that child.</div>
-                {% else %}
-                    <div class="text-sm text-base-400 dark:text-base-500">None recorded.</div>
-                {% endif %}
-            </div>
-
-            {% include "admin/imports/importbatch/_field.html" with field=form.notes %}
-
-            <div class="flex gap-3 pt-4 border-t border-base-200 dark:border-base-800">
-                <button type="submit" name="action" value="approve" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer">
-                    Approve
-                </button>
-                <button type="submit" name="action" value="skip" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent dark:hover:bg-base-800/80 cursor-pointer">
-                    Skip for now
-                </button>
-                <button type="submit" name="action" value="reject" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-red-600 bg-red-600 border-transparent text-white hover:bg-red-600/80 cursor-pointer ml-auto">
-                    Reject
-                </button>
-            </div>
-        </form>
+            <div class="text-[15px] mb-4">—</div>
         {% endif %}
+        <dl class="text-[15px] grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4">
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Emergency contact</dt><dd>{{ effective_data.emergency_contact_name|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Relationship</dt><dd>{{ effective_data.emergency_relationship|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Emergency number</dt><dd>{{ effective_data.emergency_number|default:"—" }}</dd></div>
+        </dl>
+    </div>
+
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Committees</h2>
+        <div class="text-[15px]">{% if effective_data.committees %}{{ effective_data.committees|join:", " }}{% else %}—{% endif %}</div>
+    </div>
+
+    <div>
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Certification</h2>
+        <dl class="text-[15px] grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Date filed</dt><dd>{{ effective_data.date_filed|default:"—" }}</dd></div>
+            <div><dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Certification date</dt><dd>{{ effective_data.certification_date|default:"—" }}</dd></div>
+        </dl>
     </div>
 </div>
+
+{% else %}
+{% comment %}
+One column, in the same order the paper form lays fields out, so checking
+the screen against the sheet in hand is a straight top-to-bottom scan
+rather than a hunt across two panels. Generous spacing and larger text
+throughout -- the congregation includes older volunteers.
+{% endcomment %}
+<form method="post" class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-8 max-w-4xl">
+    {% csrf_token %}
+
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Personal information</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            {% include "admin/imports/importbatch/_field.html" with field=form.member_no uncertain=uncertain_by_field.member_no %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.last_name uncertain=uncertain_by_field.last_name %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.first_name uncertain=uncertain_by_field.first_name %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.middle_name uncertain=uncertain_by_field.middle_name %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.suffix uncertain=uncertain_by_field.suffix %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.date_of_birth uncertain=uncertain_by_field.date_of_birth %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.place_of_birth uncertain=uncertain_by_field.place_of_birth %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.gender uncertain=uncertain_by_field.gender %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.civil_status uncertain=uncertain_by_field.civil_status %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.nationality uncertain=uncertain_by_field.nationality %}
+        </div>
+        <div class="mt-1 pt-4 border-t border-base-100 dark:border-base-800">
+            <div class="text-xs text-base-400 dark:text-base-500 mb-2">Not on the paper form &mdash; your decision:</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+                {% include "admin/imports/importbatch/_field.html" with field=form.membership_status %}
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Contact</h2>
+        {% include "admin/imports/importbatch/_field.html" with field=form.home_address uncertain=uncertain_by_field.home_address %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            {% include "admin/imports/importbatch/_field.html" with field=form.mobile_number uncertain=uncertain_by_field.mobile_number %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.email uncertain=uncertain_by_field.email %}
+        </div>
+    </div>
+
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Family</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            {% include "admin/imports/importbatch/_field.html" with field=form.spouse_name uncertain=uncertain_by_field.spouse_name %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.date_of_marriage uncertain=uncertain_by_field.date_of_marriage %}
+        </div>
+
+        <div class="mb-5">
+            <div class="flex items-center gap-2 font-semibold text-font-important-light dark:text-font-important-dark text-[15px] mb-3">
+                Children
+                {% include "admin/imports/importbatch/_section_flag.html" with uncertain=uncertain_by_field.children %}
+            </div>
+            {% include "admin/imports/importbatch/_section_flag_note.html" with uncertain=uncertain_by_field.children %}
+            {{ formset.management_form }}
+            {% if formset.forms %}
+                <div class="space-y-3">
+                    {% for child_form in formset %}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {{ child_form.full_name }}
+                            {{ child_form.date_of_birth }}
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="text-xs text-base-400 dark:text-base-500 mt-2">Clear a name to drop that child.</div>
+            {% else %}
+                <div class="text-sm text-base-400 dark:text-base-500">None recorded.</div>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-6">
+            {% include "admin/imports/importbatch/_field.html" with field=form.emergency_contact_name uncertain=uncertain_by_field.emergency_contact_name %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.emergency_relationship uncertain=uncertain_by_field.emergency_relationship %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.emergency_number uncertain=uncertain_by_field.emergency_number %}
+        </div>
+    </div>
+
+    <div class="mb-8">
+        <div class="flex items-center gap-2 pb-3 mb-5 border-b border-base-200 dark:border-base-800">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500">Committees</h2>
+            {% include "admin/imports/importbatch/_section_flag.html" with uncertain=uncertain_by_field.committees %}
+        </div>
+        {% include "admin/imports/importbatch/_section_flag_note.html" with uncertain=uncertain_by_field.committees %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {% for checkbox in form.committees %}
+                <label class="flex items-center gap-2 text-[15px]">
+                    {{ checkbox.tag }} {{ checkbox.choice_label }}
+                </label>
+            {% endfor %}
+        </div>
+        {% if form.committees.errors %}
+            <div class="text-xs text-red-600 dark:text-red-500 mt-2">{{ form.committees.errors|striptags }}</div>
+        {% endif %}
+    </div>
+
+    <div class="mb-8">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Certification</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            {% include "admin/imports/importbatch/_field.html" with field=form.date_filed uncertain=uncertain_by_field.date_filed %}
+            {% include "admin/imports/importbatch/_field.html" with field=form.certification_date uncertain=uncertain_by_field.certification_date %}
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            {% include "admin/imports/importbatch/_field.html" with field=form.form_version uncertain=uncertain_by_field.form_version %}
+        </div>
+    </div>
+
+    {% if other_flags %}
+        <div class="mb-8 text-xs text-base-500 dark:text-base-400 flex items-start gap-1.5">
+            <span class="material-symbols-outlined md-14 mt-px" aria-hidden="true">flag</span>
+            <span>
+                <span class="font-semibold">Also flagged by the AI, not tied to a field above:</span>
+                {% for item in other_flags %}{{ item.field }}{% if item.read_as %} (read as &ldquo;{{ item.read_as }}&rdquo;){% endif %}{% if item.why %} &mdash; {{ item.why }}{% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}
+            </span>
+        </div>
+    {% endif %}
+
+    {% comment %}
+    The other of the three things allowed to be visually loud: the decision
+    itself. Every person is an individual decision -- there is no
+    batch/bulk action here, on purpose.
+    {% endcomment %}
+    <div class="flex flex-wrap gap-3 pt-6 border-t border-base-200 dark:border-base-800">
+        <button type="submit" name="action" value="approve" accesskey="a" title="Approve (Alt+A)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer">
+            Approve
+        </button>
+        <button type="submit" name="action" value="skip" accesskey="k" title="Skip for now (Alt+K)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent dark:hover:bg-base-800/80 cursor-pointer">
+            Skip for now
+        </button>
+        <button type="submit" name="action" value="reject" accesskey="r" title="Reject (Alt+R)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-red-600 bg-red-600 border-transparent text-white hover:bg-red-600/80 cursor-pointer sm:ml-auto">
+            Reject
+        </button>
+    </div>
+</form>
+{% endif %}
 {% endblock %}

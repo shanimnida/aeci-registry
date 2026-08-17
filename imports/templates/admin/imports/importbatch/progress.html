@@ -42,6 +42,55 @@
     </div>
 {% endif %}
 
+{% comment %}
+"so i can easily find the imported form of the paper im looking at" -- a
+volunteer holding one sheet needs to land on its row in seconds, not scroll
+upload order. Forgiving on purpose: partial, case-insensitive, and blind to
+punctuation -- see imports/admin.py's _row_matches_search.
+{% endcomment %}
+<form method="get" class="mb-4">
+    <div class="bg-white border border-base-200 flex flex-row items-center px-3 rounded-default shadow-xs w-full focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary-600 dark:bg-base-900 dark:border-base-700">
+        <span class="material-symbols-outlined md-18 text-base-400 dark:text-base-500" aria-hidden="true">search</span>
+        <input type="text"
+               name="q"
+               value="{{ query }}"
+               autocomplete="off"
+               class="grow font-medium min-w-0 overflow-hidden p-2.5 placeholder-font-subtle-light truncate focus:outline-hidden dark:bg-base-900 dark:placeholder-font-subtle-dark dark:text-font-default-dark"
+               placeholder="Search by surname, first name, or image filename (e.g. IMG_5883)" />
+        {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        <button type="submit" class="font-medium text-sm text-primary-600 dark:text-primary-400 px-2 py-1 cursor-pointer">Search</button>
+        {% if query %}
+            <a href="?{% if status_filter %}status={{ status_filter }}{% endif %}" class="text-base-400 dark:text-base-500 hover:text-base-600 dark:hover:text-base-300 ml-1" title="Clear search">
+                <span class="material-symbols-outlined md-18" aria-hidden="true">close</span>
+            </a>
+        {% endif %}
+    </div>
+</form>
+
+{% comment %}
+"a way to see, at a glance, which rows are still pending" -- each tab
+carries its own live count, so the reviewer never has to count status
+badges down the table to know what is left.
+{% endcomment %}
+<div class="flex flex-wrap gap-2 mb-6" role="tablist" aria-label="Filter by status">
+    <a href="?{% if query %}q={{ query|urlencode }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if not status_filter %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        All {{ counts.total }}
+    </a>
+    <a href="?status=PENDING{% if query %}&q={{ query|urlencode }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if status_filter == "PENDING" %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        Pending {{ counts.pending }}
+    </a>
+    <a href="?status=APPROVED{% if query %}&q={{ query|urlencode }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if status_filter == "APPROVED" %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        Approved {{ counts.approved }}
+    </a>
+    <a href="?status=REJECTED{% if query %}&q={{ query|urlencode }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if status_filter == "REJECTED" %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        Rejected {{ counts.rejected }}
+    </a>
+</div>
+
 <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs overflow-hidden">
     <table class="w-full text-sm">
         <thead class="bg-base-50 dark:bg-base-800 text-left text-xs uppercase text-base-400 dark:text-base-500">
@@ -80,6 +129,16 @@
                             <a href="{% url 'admin:people_person_change' row.created_person.pk %}" class="text-primary-600 dark:text-primary-400 hover:underline">View person</a>
                         {% else %}
                             <a href="{% url 'admin:imports_importbatch_review' batch.pk row.pk %}" class="text-base-400 hover:underline">View</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-8 text-center text-sm text-base-400 dark:text-base-500">
+                        {% if query %}
+                            No entry matches “{{ query }}”{% if status_filter %} among {{ status_filter|lower }} entries{% endif %}.
+                        {% else %}
+                            No entries in this batch{% if status_filter %} with status {{ status_filter|lower }}{% endif %}.
                         {% endif %}
                     </td>
                 </tr>

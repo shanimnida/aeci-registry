@@ -1,0 +1,11 @@
+{% comment %}
+Same flag treatment as _field.html, for the two sections (Children,
+Committees) that are not single inputs and so cannot use that include
+directly. Pass `uncertain` = the matching item from uncertain_by_field.
+{% endcomment %}
+{% if uncertain %}
+    <span class="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-xs border-2 border-amber-500 text-amber-800 bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:bg-amber-500/10">
+        <span class="material-symbols-outlined md-14" aria-hidden="true">flag</span>
+        AI unsure
+    </span>
+{% endif %}

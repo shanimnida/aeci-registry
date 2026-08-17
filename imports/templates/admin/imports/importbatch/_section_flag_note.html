@@ -1,0 +1,14 @@
+{% comment %}
+Pairs with _section_flag.html: the explanatory line under a section
+heading whose flag applies to the whole section (Children, Committees)
+rather than one input. Pass `uncertain` = the matching item.
+{% endcomment %}
+{% if uncertain %}
+    <div class="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-1.5 mb-3">
+        <span class="material-symbols-outlined md-14 mt-px" aria-hidden="true">visibility</span>
+        <span>
+            {% if uncertain.read_as %}AI read this as &ldquo;{{ uncertain.read_as }}&rdquo;.{% endif %}
+            {{ uncertain.why|default:"Check against the paper." }}
+        </span>
+    </div>
+{% endif %}

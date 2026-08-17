@@ -1,9 +1,26 @@
 {% load unfold %}
-<div class="form-field flex flex-col gap-2 mb-4 {% if field.errors %}errors{% endif %}">
-    <label for="{{ field.id_for_label }}" class="block font-semibold text-font-important-light dark:text-font-important-dark text-sm">
+<div class="form-field flex flex-col gap-2 mb-5 {% if field.errors %}errors{% endif %}">
+    <label for="{{ field.id_for_label }}" class="flex flex-wrap items-center gap-2 font-semibold text-font-important-light dark:text-font-important-dark text-[15px]">
         {{ field.label }}{% if field.field.required %}<span class="text-red-600 dark:text-red-500"> *</span>{% endif %}
+        {% if uncertain %}
+            {# Not colour alone: an icon plus the words "AI unsure" carry the meaning too. #}
+            <span class="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-xs border-2 border-amber-500 text-amber-800 bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:bg-amber-500/10">
+                <span class="material-symbols-outlined md-14" aria-hidden="true">flag</span>
+                AI unsure
+            </span>
+        {% endif %}
     </label>
-    {{ field }}
+    <div class="{% if uncertain %}rounded-default ring-2 ring-amber-400 dark:ring-amber-500{% endif %}">
+        {{ field }}
+    </div>
+    {% if uncertain %}
+        <div class="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+            <span class="material-symbols-outlined md-14 mt-px" aria-hidden="true">visibility</span>
+            <span>
+                AI read this as {% if uncertain.read_as %}&ldquo;{{ uncertain.read_as }}&rdquo;{% else %}unreadable{% endif %}{% if uncertain.why %} &mdash; {{ uncertain.why }}{% endif %}. Check the paper.
+            </span>
+        </div>
+    {% endif %}
     {% if field.help_text %}
         <div class="text-xs text-base-400 dark:text-base-500">{{ field.help_text|safe }}</div>
     {% endif %}

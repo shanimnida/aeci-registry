@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -24,6 +25,29 @@ def _next_pending_row(batch, after_sequence=None):
         if after is not None:
             return after
     return pending.order_by("sequence").first()
+
+
+# -- row search (batch list) ---------------------------------------------
+# A volunteer holds one paper sheet and needs to land on its screen entry in
+# seconds, not scroll a list in upload order (docs/IMPORT_TEMPLATE.md's
+# entries are exactly the order the AI happened to process photos in, which
+# is not the order of the physical pile). Matching is deliberately forgiving
+# -- case-insensitive, partial, and blind to the punctuation people do not
+# type -- so "delacruz", "Dela Cruz" and "DELA-CRUZ" all find the same row,
+# and someone comparing against a photo filename can type just the digits.
+_SEARCH_STRIP_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_search_text(value) -> str:
+    return _SEARCH_STRIP_RE.sub("", str(value or "").lower())
+
+
+def _row_matches_search(row, normalized_query: str) -> bool:
+    data = row.effective_data
+    first = data.get("first_name") or ""
+    last = data.get("last_name") or ""
+    haystacks = (last, first, f"{first} {last}", data.get("source_image") or "")
+    return any(normalized_query in _normalize_search_text(text) for text in haystacks if text)
 
 
 @admin.register(ImportBatch)
@@ -181,6 +205,25 @@ class ImportBatchAdmin(ModelAdmin):
         self._require_reviewer(request, "imports.view_importbatch")
         batch = get_object_or_404(ImportBatch, pk=object_id)
         rows = batch.rows.select_related("created_person").order_by("sequence")
+
+        # "a way to see, at a glance, which rows are still pending" -- a
+        # status filter with a live count in each tab's own label, rather
+        # than making the reviewer count status badges down the table.
+        status_filter = (request.GET.get("status") or "").strip().upper()
+        if status_filter in StagedPersonStatus.values:
+            rows = rows.filter(status=status_filter)
+
+        # "so i can easily find the imported form of the paper im looking
+        # at" -- the whole point of this search box. See _row_matches_search.
+        # Done in Python, not the ORM, because the fields searched live
+        # inside a JSONField (raw_data/edited_data) and a realistic batch is
+        # tens of rows, not thousands (imports/forms.py's own MAX_IMPORT_FILE
+        # cap assumes the same).
+        query = (request.GET.get("q") or "").strip()
+        if query:
+            normalized_query = _normalize_search_text(query)
+            rows = [row for row in rows if _row_matches_search(row, normalized_query)]
+
         next_row = batch.next_pending()
         context = {
             **self.admin_site.each_context(request),
@@ -191,6 +234,8 @@ class ImportBatchAdmin(ModelAdmin):
             "rows": rows,
             "counts": batch.counts(),
             "next_row": next_row,
+            "query": query,
+            "status_filter": status_filter,
         }
         return render(request, "admin/imports/importbatch/progress.html", context)
 
@@ -351,20 +396,46 @@ class ImportBatchAdmin(ModelAdmin):
         if not read_only:
             duplicate_warning = possible_duplicate_warning(row.effective_data)
 
+        # Field-level flags, moved onto the fields themselves (see
+        # review.html / _field.html) instead of a separate block the
+        # reviewer had to read and then mentally map back onto the form.
+        # Keyed by the AI's own field name so each include can look itself
+        # up directly, e.g. uncertain_by_field.date_of_birth.
+        uncertain_by_field = {}
+        for item in row.raw_data.get("uncertain_fields") or []:
+            if isinstance(item, dict) and item.get("field"):
+                uncertain_by_field[item["field"]] = item
+
+        # A flag naming something this screen has no single field for --
+        # "children" as a whole, or a name the AI wrote that does not match
+        # any field this form renders -- must not silently vanish just
+        # because there is no one field to pin it to. "children" itself is
+        # handled at the Children section heading in review.html; anything
+        # else is listed in `other_flags` as a last resort.
+        known_field_names = set(StagedPersonForm.base_fields) | {"children"}
+        other_flags = [
+            item for name, item in uncertain_by_field.items() if name not in known_field_names
+        ]
+
+        counts = batch.counts()
+        decided = counts["approved"] + counts["rejected"]
+        progress_percent = round(decided / counts["total"] * 100) if counts["total"] else 0
+
         context = {
             **self.admin_site.each_context(request),
             "title": f"Review {row}",
             "opts": self.model._meta,
             "batch": batch,
             "row": row,
-            "raw_data": row.raw_data,
-            "uncertain_fields": row.raw_data.get("uncertain_fields") or [],
-            "ai_notes": row.raw_data.get("notes"),
+            "effective_data": row.effective_data,
+            "uncertain_by_field": uncertain_by_field,
+            "other_flags": other_flags,
             "confidence": row.raw_data.get("confidence"),
             "duplicate_warning": duplicate_warning,
             "form": form,
             "formset": formset,
             "read_only": read_only,
-            "counts": batch.counts(),
+            "counts": counts,
+            "progress_percent": progress_percent,
         }
         return render(request, "admin/imports/importbatch/review.html", context)
