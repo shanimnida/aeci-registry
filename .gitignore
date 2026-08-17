@@ -46,3 +46,11 @@ Thumbs.db
 
 # SDD scratch workspace
 .superpowers/
+
+# Photographed member forms — personal data, NEVER commit
+/form images/
+*.HEIC
+*.JPG
+*.JPEG
+*.PNG
+*.PDF
