@@ -77,7 +77,7 @@ Return **one JSON array**, one object per form, matching this shape exactly:
 | `last_name`, `first_name` | Required text, never `null` and never blank — a form with no legible name at all is not something AEGIS can stage as a person. If a name is genuinely unreadable, transcribe your best reading and flag it in `uncertain_fields` rather than omitting it; the reviewer corrects it, but there must be something to correct. |
 | `form_version` | Required — always `"v1"` or `"v2"`, never `null`. `"v1"` if Section V is Certification. `"v2"` if there is a Data Privacy Consent section before it. This decides whether consent was collected. |
 | `member_no` | Usually blank. Never invent one. |
-| dates | `YYYY-MM-DD`. If you cannot read it confidently, use `null` and put the raw text in `uncertain_fields`. Record an impossible date (see "Flag these specifically" below) in the same `YYYY-MM-DD` shape rather than as free text — AEGIS checks calendar validity itself when the entry is reviewed, and needs the digits as written to do that. |
+| dates | `YYYY-MM-DD`. If you cannot read it confidently, use `null` and put the raw text in `uncertain_fields`. Record an impossible date (see "Flag these specifically" below) in the same `YYYY-MM-DD` shape rather than as free text — AEGIS checks calendar validity itself when the entry is reviewed, and needs the digits as written to do that: a date that isn't a real calendar day at all (29 February in a non-leap year), a date of birth or date of marriage in the future, a marriage date before the person's own date of birth, and a child recorded as older than the household head are all refused at approval, not silently accepted. A birth year that is merely old or unlikely — the paper backlog is full of these — is not refused; only what is actually impossible is. |
 | `gender` | `MALE` or `FEMALE`, or `null`. |
 | `civil_status` | `SINGLE`, `MARRIED`, `WIDOWED`, `SEPARATED`, `ANNULLED`, or `null`. |
 | phone numbers | Exactly as written, spacing and dashes included. |
@@ -125,6 +125,16 @@ The AI reads handwriting well but cannot know things it is not looking at. It ca
 two forms are the same family, that a member changed their number last month, or that a
 committee ticked in error was discussed and settled at a meeting. It also cannot see a form it
 was not given.
+
+AEGIS itself does part of that family-matching at approval time, since both parents' forms
+routinely list the same children. Approving the second parent's row looks for a child already
+created by the first — matched on name **and** date of birth — and reuses that person and
+household instead of creating a duplicate; it does the same for the spouse named in `spouse_name`
+if that person has already been approved. Every time this happens it is reported on the approval
+result ("Linked to existing child …"), so a wrong match is something you catch immediately, not
+months later. When a match is uncertain — the same name with a different or missing date of birth,
+or more than one candidate — AEGIS refuses to guess and asks you to correct the entry instead of
+silently creating a duplicate or silently linking the wrong person.
 
 AEGIS re-checks the church's own rules on approval — at most two committees per member, one
 chairperson per committee, valid dates. A row the AI transcribed faithfully can still be

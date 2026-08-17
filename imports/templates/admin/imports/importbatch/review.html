@@ -38,6 +38,12 @@
     </div>
 {% endif %}
 
+{% if duplicate_warning %}
+    <div class="bg-orange-50 border border-orange-200 dark:bg-orange-500/10 dark:border-orange-900 rounded-default p-4 mb-6 text-sm text-orange-700 dark:text-orange-400">
+        {{ duplicate_warning }}
+    </div>
+{% endif %}
+
 <div class="bg-primary-50 border border-primary-200 dark:bg-primary-500/10 dark:border-primary-900 rounded-default p-4 mb-6">
     <div class="flex flex-wrap gap-6 items-start">
         <div>
@@ -153,6 +159,10 @@
                 {% include "admin/imports/importbatch/_field.html" with field=form.email %}
                 {% include "admin/imports/importbatch/_field.html" with field=form.date_filed %}
                 {% include "admin/imports/importbatch/_field.html" with field=form.certification_date %}
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                {% include "admin/imports/importbatch/_field.html" with field=form.spouse_name %}
+                {% include "admin/imports/importbatch/_field.html" with field=form.date_of_marriage %}
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-4">

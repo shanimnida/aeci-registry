@@ -9,6 +9,7 @@ from core import groups
 from imports.models import ImportBatch, StagedPerson, StagedPersonStatus
 from imports.parsing import parse_import_json
 from people.models import Household, HouseholdMember, MembershipStatus, Person
+from records.models import AccessLog
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -52,6 +53,8 @@ def _base_post_data(row):
         "home_address": data.get("home_address") or "",
         "mobile_number": data.get("mobile_number") or "",
         "email": data.get("email") or "",
+        "spouse_name": data.get("spouse_name") or "",
+        "date_of_marriage": data.get("date_of_marriage") or "",
         "form_version": data.get("form_version") or "v1",
         "date_filed": data.get("date_filed") or "",
         "certification_date": data.get("certification_date") or "",
@@ -299,3 +302,90 @@ def test_reviewing_an_already_decided_row_is_read_only(client, secretariat_user,
     response = client.get(_review_url(batch, row))
     assert response.status_code == 200
     assert b"Approve" not in response.content
+
+
+@pytest.mark.django_db
+def test_viewing_a_pending_row_writes_an_access_log_entry(client, secretariat_user, staged_batch):
+    """IMPORTANT 3: this screen renders the same class of personal data every
+    Person view logs (people/admin.py) and used to log nothing at all. A
+    still-pending row has no Person yet, so it logs against `report`."""
+    batch, rows = staged_batch
+    row = rows["DELACRUZJUAN MIGUEL"]
+    client.force_login(secretariat_user)
+
+    assert AccessLog.objects.count() == 0
+    response = client.get(_review_url(batch, row))
+    assert response.status_code == 200
+
+    entry = AccessLog.objects.get()
+    assert entry.user == secretariat_user
+    assert entry.person is None
+    assert entry.report  # exactly one of person/report -- see AccessLog.record
+    assert "DELACRUZ" in entry.report.upper()
+
+
+@pytest.mark.django_db
+def test_approving_a_row_then_viewing_it_again_logs_against_the_created_person(
+    client, secretariat_user, staged_batch
+):
+    """Once a row is approved, viewing it again is viewing that Person's own
+    data -- the log should point at the real Person, like every other view
+    of them does, not stay pinned to a label nobody can search for."""
+    batch, rows = staged_batch
+    row = rows["DELACRUZJUAN MIGUEL"]
+    client.force_login(secretariat_user)
+
+    client.post(_review_url(batch, row), _base_post_data(row))
+    row.refresh_from_db()
+    AccessLog.objects.all().delete()  # isolate the log write from re-viewing below
+
+    client.get(_review_url(batch, row))
+    entry = AccessLog.objects.get()
+    assert entry.person == row.created_person
+    assert entry.report == ""
+
+
+@pytest.mark.django_db
+def test_a_future_birth_date_is_refused_at_approval_and_leaves_the_row_pending(
+    client, secretariat_user, staged_batch
+):
+    """IMPORTANT 4, exercised through the actual import path: a birth year
+    the AI faithfully transcribed as written (docs/IMPORT_TEMPLATE.md rule 3)
+    reaches the reviewer, but approving it as-is is refused, not silently
+    accepted the way it used to be."""
+    batch, rows = staged_batch
+    row = rows["DELACRUZJUAN MIGUEL"]
+    client.force_login(secretariat_user)
+
+    post = _base_post_data(row)
+    post["date_of_birth"] = "2099-01-01"
+    response = client.post(_review_url(batch, row), post)
+    assert response.status_code == 200  # re-rendered, not redirected -- refused
+
+    assert Person.objects.count() == 0
+    row.refresh_from_db()
+    assert row.status == StagedPersonStatus.PENDING
+    assert "future" in row.error_message.lower()
+
+
+@pytest.mark.django_db
+def test_a_possible_duplicate_is_shown_before_approving_not_after(
+    client, secretariat_user, staged_batch
+):
+    """MINOR 8: the duplicate check used to fire only after the Person
+    already existed. It must be visible on the review screen itself, before
+    the reviewer clicks Approve."""
+    batch, rows = staged_batch
+    row = rows["DELACRUZJUAN MIGUEL"]
+    # An existing Person who will read as a duplicate of this row.
+    Person.objects.create(
+        last_name=row.raw_data["last_name"],
+        first_name=row.raw_data["first_name"],
+        date_of_birth=row.raw_data["date_of_birth"],
+    )
+    client.force_login(secretariat_user)
+
+    response = client.get(_review_url(batch, row))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "may duplicate an existing record" in body

@@ -167,6 +167,23 @@ class Person(TimeStampedModel):
                     )
                 }
             )
+        # IMPORTANT 4 (2026-08-16 import fixes): docs/IMPORT_TEMPLATE.md tells
+        # the transcribing AI to record an impossible date exactly as written
+        # rather than "fix" it, and promises AEGIS checks calendar validity
+        # itself once a reviewer approves. That promise was false for anything
+        # Django's own date parser accepts as a real date -- a birth year of
+        # 2099 is a syntactically fine date and passed full_clean() untouched.
+        # Checked here, on the model, rather than only in imports/services.py,
+        # so every write path shares it: the ordinary Person admin form, the
+        # import path, and any future one. Deliberately narrow: only a date
+        # that is *impossible* (in the future) is refused. A birth year that
+        # is merely improbable is not -- decades of paper backlog, hand-typed
+        # by whoever filled the form, must stay encodable, or the backlog
+        # itself becomes un-encodable.
+        if self.date_of_birth and self.date_of_birth > timezone.localdate():
+            raise ValidationError(
+                {"date_of_birth": "Date of birth cannot be in the future."}
+            )
 
     def save(self, *args, **kwargs):
         loaded = getattr(self, "_loaded_status", None)
@@ -195,6 +212,19 @@ class Household(TimeStampedModel):
     def __str__(self):
         return self.name
 
+    def clean(self):
+        super().clean()
+        # IMPORTANT 4: the marriage-date half of "a date of marriage in the
+        # future" that docs/IMPORT_TEMPLATE.md now promises AEGIS refuses.
+        # Self-contained -- it only needs this row's own field -- unlike the
+        # "before either spouse's own birth date" half, which needs a
+        # specific person and belongs on HouseholdMember.clean() below,
+        # where household and person are both already in hand.
+        if self.date_of_marriage and self.date_of_marriage > timezone.localdate():
+            raise ValidationError(
+                {"date_of_marriage": "Date of marriage cannot be in the future."}
+            )
+
 
 class HouseholdMember(models.Model):
     household = models.ForeignKey(
@@ -214,3 +244,47 @@ class HouseholdMember(models.Model):
 
     def __str__(self):
         return f"{self.person.full_name} — {self.get_role_display()}"
+
+    def clean(self):
+        super().clean()
+        # IMPORTANT 4 (2026-08-16 import fixes): the other two "impossible,
+        # not merely improbable" date checks docs/IMPORT_TEMPLATE.md promises.
+        # Both compare two different rows' dates against each other, which
+        # neither Person.clean() nor Household.clean() can do alone -- this
+        # join model is where a household, a role and a specific person are
+        # all in hand at once, and it is already full_clean()-ed on every
+        # creation path (the ordinary admin inline included), so putting the
+        # checks here protects every write path, not just imports/services.py.
+        if not (self.household_id and self.person_id):
+            return
+        if self.role == HouseholdRole.CHILD:
+            child_dob = self.person.date_of_birth
+            if child_dob:
+                head = (
+                    self.household.members.filter(role=HouseholdRole.HEAD)
+                    .exclude(pk=self.pk)
+                    .select_related("person")
+                    .first()
+                )
+                if head and head.person.date_of_birth and child_dob < head.person.date_of_birth:
+                    raise ValidationError(
+                        {
+                            "person": (
+                                f"{self.person.full_name} (born {child_dob}) would be older "
+                                f"than the household head, {head.person.full_name} (born "
+                                f"{head.person.date_of_birth}) -- check the date of birth."
+                            )
+                        }
+                    )
+        elif self.role in (HouseholdRole.HEAD, HouseholdRole.SPOUSE):
+            marriage_date = self.household.date_of_marriage
+            birth_date = self.person.date_of_birth
+            if marriage_date and birth_date and marriage_date < birth_date:
+                raise ValidationError(
+                    {
+                        "household": (
+                            f"The date of marriage ({marriage_date}) is before "
+                            f"{self.person.full_name}'s own date of birth ({birth_date})."
+                        )
+                    }
+                )

@@ -70,6 +70,16 @@ def test_an_unknown_committee_name_is_rejected():
     assert "Music and Arts Committee" in exc_info.value.errors[0]
 
 
+def test_deeply_nested_json_is_rejected_gracefully_not_a_raw_500():
+    """IMPORTANT 6: json.loads() has no depth limit of its own -- 10,000
+    levels of nesting raises an uncaught RecursionError past the point this
+    module used to catch only json.JSONDecodeError."""
+    hostile = ("[" * 10_000) + ("]" * 10_000)
+    with pytest.raises(ImportValidationError) as exc_info:
+        parse_import_json(hostile.encode())
+    assert exc_info.value.errors
+
+
 def test_an_impossible_calendar_date_still_parses_shape_only():
     """docs/IMPORT_TEMPLATE.md rule 3: the AI records an impossible date as
     written and flags it, rather than fixing or dropping it. Shape

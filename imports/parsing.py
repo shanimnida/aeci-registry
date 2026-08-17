@@ -190,6 +190,25 @@ def parse_import_json(raw_bytes: bytes) -> list[dict]:
         raise ImportValidationError(
             [f"The file is not valid JSON: {exc.msg} (line {exc.lineno}, column {exc.colno})."]
         ) from exc
+    except RecursionError as exc:
+        # IMPORTANT 6: json.loads() has no depth limit of its own -- it
+        # recurses once per nesting level and relies on Python's own
+        # recursion limit to eventually give up. Verified: 10,000 levels of
+        # nesting raises an uncaught RecursionError, which propagated past
+        # this module as a raw 500 rather than the graceful, per-entry
+        # ImportValidationError this module promises for every other
+        # malformed input.
+        raise ImportValidationError(
+            ["The file is nested far deeper than any real member form -- AEGIS stopped "
+             "reading it rather than crash. Check the file was produced correctly."]
+        ) from exc
+    except ValueError as exc:
+        # Defensive: json.loads() can raise plain ValueError too (for
+        # example Python's own integer-string conversion limit on a huge
+        # numeric literal), not just JSONDecodeError. Same graceful
+        # response either way -- hostile or malformed input never reaches
+        # the caller as a stack trace.
+        raise ImportValidationError([f"The file is not valid JSON: {exc}."]) from exc
 
     if not isinstance(data, list):
         raise ImportValidationError(

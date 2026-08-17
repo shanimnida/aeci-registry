@@ -14,6 +14,16 @@ class ImportBatch(models.Model):
     """
 
     source_filename = models.CharField(max_length=255, blank=True)
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "SHA-256 of the uploaded file's bytes. IMPORTANT 7: the simplest "
+            "reliable way to notice a re-upload of the same file -- the "
+            "filename alone changes too easily to trust."
+        ),
+    )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

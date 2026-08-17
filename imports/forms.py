@@ -12,11 +12,32 @@ from people.models import CivilStatus, Gender, MembershipStatus
 from .parsing import ALL_COMMITTEE_NAMES, FORM_VERSIONS
 
 
+# IMPORTANT 5 (2026-08-16 import fixes): imports/admin.py's upload_view reads
+# the whole file into memory in one call before decoding it, and nothing
+# capped how large a file it would accept -- a mistaken or hostile
+# multi-hundred-megabyte upload would be read whole regardless. A realistic
+# batch is tens of forms, not tens of thousands; each transcribed form is on
+# the order of a kilobyte or two of JSON, so 5 MB comfortably covers a batch
+# in the thousands while still refusing anything that size implies is wrong.
+MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024
+
+
 class UploadForm(forms.Form):
     file = forms.FileField(
         label="Import file (.json)",
         widget=UnfoldAdminFileFieldWidget(attrs={"accept": ".json,application/json"}),
     )
+
+    def clean_file(self):
+        upload = self.cleaned_data["file"]
+        if upload.size > MAX_IMPORT_FILE_SIZE:
+            raise forms.ValidationError(
+                f"This file is {upload.size / 1_048_576:.1f} MB, larger than AEGIS accepts for "
+                f"one profiling import ({MAX_IMPORT_FILE_SIZE / 1_048_576:.0f} MB). A realistic "
+                "batch is tens of forms -- split this into smaller files, or check it is the "
+                "right file."
+            )
+        return upload
 
 
 # Date-shaped fields are plain text, not forms.DateField. Calendar validity
@@ -52,6 +73,14 @@ class StagedPersonForm(forms.Form):
     mobile_number = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     email = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
 
+    # CRITICAL 1 (2026-08-16 import fixes): this used to be display-only --
+    # shown in the "what the AI read" panel but never part of `cleaned`, so
+    # imports/services.py had no way to look for and link an existing Person
+    # by this name even after that logic was added. Editable like every
+    # other field, for the same reason date_of_birth is: the AI's reading
+    # can be wrong, and a wrong spouse match is exactly what the reviewer
+    # must be able to correct before approving.
+    spouse_name = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     date_of_marriage = forms.CharField(
         required=False, widget=UnfoldAdminTextInputWidget, help_text="YYYY-MM-DD"
     )
@@ -103,7 +132,8 @@ def initial_from_data(data: dict) -> dict:
     initial["membership_status"] = data.get("membership_status") or MembershipStatus.MEMBER
     initial["committees"] = data.get("committees") or []
     for text_field in ("member_no", "middle_name", "suffix", "place_of_birth", "nationality",
-                        "home_address", "mobile_number", "email", "emergency_contact_name",
+                        "home_address", "mobile_number", "email", "spouse_name",
+                        "emergency_contact_name",
                         "emergency_relationship", "emergency_number", "date_of_birth",
                         "date_of_marriage", "date_filed", "certification_date", "notes"):
         if initial.get(text_field) is None:

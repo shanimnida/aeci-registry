@@ -9,6 +9,18 @@ This is the one non-admin write path the church's committee rules (at most
 two self-selected committees, one chairperson per committee) have to be
 enforced against, since those rules live in CommitteeMembership.clean() and
 nowhere else.
+
+CRITICAL 1 (2026-08-16 import fixes): the Member Profiling Form is filled in
+once per adult, and both parents' forms list the same children -- that is
+how the paper form works. Approving the husband's row and then the wife's
+row used to build a brand-new Person for each entry in `children`
+unconditionally, and never linked the two households together at all
+(HouseholdRole.SPOUSE was never assigned anywhere), so two real children
+became four Person rows split across two disconnected households. Fixed by
+looking for an existing match -- a child by name *and* date of birth, a
+spouse by the free-text `spouse_name` -- before creating anything, and by
+reusing whichever household the matched person already belongs to. See
+_find_child_match, _find_spouse_match, and the "linked" notices below.
 """
 
 from django.core.exceptions import ValidationError
@@ -16,12 +28,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from committees.models import Committee, CommitteeMembership, CommitteeRole
-from people.admin import find_possible_duplicates
 from people.models import Household, HouseholdMember, HouseholdRole, MembershipStatus, Person
 
 
 def _split_child_name(full_name: str, parent_last_name: str) -> tuple[str, str]:
-    """Best-effort split of a child's one-string full name into (first, last).
+    """Best-effort split of a one-string full name into (first, last).
 
     docs/IMPORT_TEMPLATE.md's `children` entries carry only `full_name` --
     there is no separate surname field to transcribe, because the paper form
@@ -30,6 +41,9 @@ def _split_child_name(full_name: str, parent_last_name: str) -> tuple[str, str]:
     the rest is first/middle name. Otherwise the last word is treated as the
     surname. Either way this is a guess: the reviewer sees it as an editable
     field before approving and can correct it.
+
+    Also reused by _find_spouse_match below to pull a first name out of
+    `spouse_name`, which is written in the same "FIRST M. LAST" shape.
     """
     full_name = " ".join(full_name.split())
     lowered = full_name.lower()
@@ -49,9 +63,75 @@ def _blank_to_none(value):
     return value or None
 
 
-def build_person_from_import(cleaned: dict, children: list[dict], user) -> Person:
-    """Create the Person, Household, child Persons and CommitteeMemberships
-    for one approved import row. Returns the created Person.
+def _find_child_match(first_name: str, last_name: str, date_of_birth):
+    """Look for an existing Person matching a child entry on name AND date of
+    birth (CRITICAL 1). Both parents' forms list the same children --
+    approving the second parent must reuse the child the first parent's
+    approval already created, not build a second one.
+
+    Returns (person_or_None, ambiguous). `ambiguous` is True whenever a
+    same-name candidate exists but the match cannot be narrowed to exactly
+    one: more than one candidate shares the given date of birth, every
+    same-name candidate has a *different* date of birth, or this child's own
+    date of birth is missing so nothing could be compared at all. The
+    caller must not guess in that case -- it raises a ValidationError and
+    lets the reviewer resolve it by correcting the child's name or date of
+    birth (or the existing record's), the same way every other
+    approval-time refusal in this module works.
+    """
+    candidates = Person.objects.filter(first_name__iexact=first_name, last_name__iexact=last_name)
+    if not candidates.exists():
+        return None, False
+    if date_of_birth is not None:
+        exact = list(candidates.filter(date_of_birth=date_of_birth))
+        if len(exact) == 1:
+            return exact[0], False
+    return None, True
+
+
+def _find_spouse_match(spouse_name: str, household_surname: str, exclude_pk):
+    """A best-effort match of the JSON's free-text `spouse_name` against an
+    existing Person (CRITICAL 1). There is no link, only a name someone
+    handwrote on a form -- _split_child_name's same surname-stripping guess
+    is reused to pull out a first name to compare, since spouse_name carries
+    the same "FIRST M. LAST" shape a child's full_name does.
+
+    Returns (person_or_None, ambiguous). Unlike a child match, an ambiguous
+    spouse match does not block approval -- linking a spouse is a
+    convenience, not something the rest of the row's correctness depends on
+    -- so the caller treats it as "no match" and tells the reviewer why, in
+    case a same-named stranger almost got linked by mistake.
+    """
+    spouse_name = " ".join((spouse_name or "").split())
+    if not spouse_name:
+        return None, False
+    _, guessed_last = _split_child_name(spouse_name, household_surname)
+    normalized = spouse_name.lower()
+    candidates = Person.objects.filter(last_name__iexact=guessed_last).exclude(pk=exclude_pk)
+    matches = [
+        candidate
+        for candidate in candidates
+        if candidate.first_name.strip() and normalized.startswith(candidate.first_name.strip().lower())
+    ]
+    if len(matches) == 1:
+        return matches[0], False
+    if matches:
+        return None, True
+    return None, False
+
+
+def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple[Person, list[str]]:
+    """Create (or link) the Person, Household, child Persons and
+    CommitteeMemberships for one approved import row.
+
+    Returns (person, notices). `person` is always a freshly created Person
+    for this row -- the primary subject of the paper form being approved is
+    always a real, distinct human who filled in their own form, so they are
+    never matched against an existing record the way children and spouses
+    are. `notices` lists every place this call *linked* to an existing
+    record instead of creating one (CRITICAL 1's reporting requirement --
+    silent linking is as bad as silent duplication); the caller shows each
+    one to the reviewer.
 
     `cleaned` is the reviewer's (possibly corrected) data for the primary
     person, keyed the same as docs/IMPORT_TEMPLATE.md's JSON shape plus
@@ -59,6 +139,7 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> Perso
     import-feature-report.md). `children` is a list of {full_name,
     date_of_birth} dicts, same shape as the JSON's `children` array.
     """
+    notices: list[str] = []
     with transaction.atomic():
         person = Person(
             member_no=_blank_to_none(cleaned.get("member_no")),
@@ -93,43 +174,101 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> Perso
         person.full_clean()
         person.save()
 
-        household = Household(
-            name=f"{person.last_name} Family",
-            address=cleaned.get("home_address") or "",
-            date_of_marriage=_blank_to_none(cleaned.get("date_of_marriage")),
-            created_by=user,
-            updated_by=user,
-        )
-        household.full_clean()
-        household.save()
+        # -- spouse + household (CRITICAL 1) --------------------------------
+        spouse_name = (cleaned.get("spouse_name") or "").strip()
+        spouse_match = None
+        if spouse_name:
+            spouse_match, spouse_ambiguous = _find_spouse_match(spouse_name, person.last_name, person.pk)
+            if spouse_ambiguous:
+                notices.append(
+                    f"'{spouse_name}' (spouse) matches more than one existing person -- not "
+                    "linked automatically. Link the household by hand if one of them is the "
+                    "same person."
+                )
+                spouse_match = None
 
-        head = HouseholdMember(household=household, person=person, role=HouseholdRole.HEAD)
-        head.full_clean()
-        head.save()
+        household = None
+        if spouse_match is not None:
+            spouse_membership = (
+                HouseholdMember.objects.filter(person=spouse_match).select_related("household").first()
+            )
+            if spouse_membership is not None:
+                # The spouse's own form was approved first and already has a
+                # household -- reuse it instead of starting a second one that
+                # would leave the two forms split apart (CRITICAL 1).
+                household = spouse_membership.household
+                if not HouseholdMember.objects.filter(household=household, person=person).exists():
+                    member = HouseholdMember(household=household, person=person, role=HouseholdRole.SPOUSE)
+                    member.full_clean()
+                    member.save()
+                notices.append(
+                    f"Linked to {spouse_match.full_name}'s existing household "
+                    f"({household}) as spouse, rather than starting a new one."
+                )
 
+        if household is None:
+            household = Household(
+                name=f"{person.last_name} Family",
+                address=cleaned.get("home_address") or "",
+                date_of_marriage=_blank_to_none(cleaned.get("date_of_marriage")),
+                created_by=user,
+                updated_by=user,
+            )
+            household.full_clean()
+            household.save()
+
+            head = HouseholdMember(household=household, person=person, role=HouseholdRole.HEAD)
+            head.full_clean()
+            head.save()
+
+            if spouse_match is not None:
+                # Matched by name, but not yet in any household of their own
+                # (e.g. added to the register outside this workflow).
+                member = HouseholdMember(household=household, person=spouse_match, role=HouseholdRole.SPOUSE)
+                member.full_clean()
+                member.save()
+                notices.append(f"Linked to existing person {spouse_match.full_name} as spouse.")
+
+        # -- children (CRITICAL 1) -------------------------------------------
         for child in children:
             full_name = (child.get("full_name") or "").strip()
             if not full_name:
                 continue
             first_name, last_name = _split_child_name(full_name, person.last_name)
-            child_person = Person(
-                last_name=last_name,
-                first_name=first_name,
-                date_of_birth=_blank_to_none(child.get("date_of_birth")),
-                membership_status=MembershipStatus.CHILD,
-                guardian=person,
-                nationality=person.nationality,
-                created_by=user,
-                updated_by=user,
-            )
-            child_person.full_clean()
-            child_person.save()
+            date_of_birth = _blank_to_none(child.get("date_of_birth"))
 
-            child_membership = HouseholdMember(
-                household=household, person=child_person, role=HouseholdRole.CHILD
-            )
-            child_membership.full_clean()
-            child_membership.save()
+            match, ambiguous = _find_child_match(first_name, last_name, date_of_birth)
+            if ambiguous:
+                raise ValidationError(
+                    f"'{full_name}' matches more than one existing person, or an existing "
+                    "person of that name with a different or missing date of birth -- AEGIS "
+                    "will not guess which one this is. Correct the child's name or date of "
+                    "birth (or the existing record's) before approving."
+                )
+
+            if match is not None:
+                child_person = match
+                notices.append(f"Linked to existing child {child_person.full_name}.")
+            else:
+                child_person = Person(
+                    last_name=last_name,
+                    first_name=first_name,
+                    date_of_birth=date_of_birth,
+                    membership_status=MembershipStatus.CHILD,
+                    guardian=person,
+                    nationality=person.nationality,
+                    created_by=user,
+                    updated_by=user,
+                )
+                child_person.full_clean()
+                child_person.save()
+
+            if not HouseholdMember.objects.filter(household=household, person=child_person).exists():
+                child_membership = HouseholdMember(
+                    household=household, person=child_person, role=HouseholdRole.CHILD
+                )
+                child_membership.full_clean()
+                child_membership.save()
 
         committee_names = cleaned.get("committees") or []
         joined_on = (
@@ -154,14 +293,25 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> Perso
             membership.full_clean()
             membership.save()
 
-        return person
+        return person, notices
 
 
-def duplicate_warning(person: Person) -> str | None:
+def possible_duplicate_warning(data: dict) -> str | None:
     """Mirrors people.admin.PersonAdmin.save_model's soft duplicate warning,
-    so the import path and the ordinary admin form give the same signal."""
-    duplicates = find_possible_duplicates(person)
-    if not duplicates.exists():
+    computed from a staged row's own field values rather than a saved
+    Person -- so the reviewer sees it on the review screen before approving
+    (MINOR 8), not as a flash message after the Person already exists.
+    Never blocks: two people genuinely can share a name.
+    """
+    last_name = (data.get("last_name") or "").strip()
+    first_name = (data.get("first_name") or "").strip()
+    if not last_name or not first_name:
         return None
-    names = ", ".join(str(candidate) for candidate in duplicates[:3])
-    return f"This may duplicate an existing record: {names}. Approved anyway — check and merge by hand if it is the same person."
+    matches = Person.objects.filter(last_name__iexact=last_name, first_name__iexact=first_name)
+    date_of_birth = data.get("date_of_birth")
+    if date_of_birth:
+        matches = matches.filter(date_of_birth=date_of_birth)
+    if not matches.exists():
+        return None
+    names = ", ".join(str(candidate) for candidate in matches[:3])
+    return f"This may duplicate an existing record: {names}. Check before approving."
