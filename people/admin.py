@@ -1,10 +1,14 @@
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db.models.constants import LOOKUP_SEP
+from django.shortcuts import render
+from django.urls import path
+from django.utils import timezone
+from django.utils.text import capfirst
 from simple_history.admin import SimpleHistoryAdmin
 from unfold.admin import ModelAdmin, TabularInline
 
-from committees.models import CommitteeMembership, CommitteeRole
+from committees.models import Committee, CommitteeMembership, CommitteeRole
 from core.groups import is_chairperson_only, is_ict
 from core.numbering import next_member_no, reconcile_member_sequence
 from people.models import Household, HouseholdMember, MembershipStatus, Person
@@ -12,6 +16,21 @@ from records.models import AccessLog, FormScan
 
 # Spec D12: enough to run a committee, and nothing more.
 CHAIRPERSON_FIELDS = ("first_name", "last_name", "nickname", "mobile_number", "email")
+
+# The chase-list report (see missing_data_view below) only ever names a
+# field a chairperson could already see elsewhere in this admin -- the
+# intersection of what the follow-up queue tracks and what CHAIRPERSON_FIELDS
+# permits. Telling a chairperson "home address" or "date of birth" is
+# missing would disclose that field exists for that person at all, which
+# CHAIRPERSON_FIELDS is deliberately built to prevent everywhere else.
+CHAIRPERSON_VISIBLE_TRACKED_FIELDS = tuple(
+    field for field in Person.TRACKED_FIELDS if field in CHAIRPERSON_FIELDS
+)
+
+MISSING_FIELD_LABELS = {
+    field: capfirst(Person._meta.get_field(field).verbose_name)
+    for field in Person.TRACKED_FIELDS
+}
 
 
 def find_possible_duplicates(person):
@@ -243,6 +262,113 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
         if is_chairperson_only(request.user):
             raise PermissionDenied
         return super().history_form_view(request, object_id, version_id, extra_context)
+
+    # -- missing-data chase list ---------------------------------------
+
+    def get_urls(self):
+        custom = [
+            path(
+                "missing-data/",
+                self.admin_site.admin_view(self.missing_data_view),
+                name="people_person_missing_data",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def missing_data_view(self, request):
+        """The paper chase list: everyone with a gap, and exactly what to ask for.
+
+        A dedicated page rather than a ticked-checkbox admin action -- the
+        Secretariat's normal case is "print everyone outstanding", and
+        forcing them to select 40 rows first to get there would be the
+        wrong default. The ?committee= filter below covers the other real
+        case: a chairperson (or the Secretariat, splitting the work) wants
+        just one committee's roster to hand a volunteer.
+
+        Reuses get_queryset() and is_chairperson_only() exactly as the rest
+        of PersonAdmin does, so whatever a role can already reach through
+        the ordinary changelist/detail views is the ceiling here too --
+        this view can narrow that further, never widen it.
+        """
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+
+        chairperson_only = is_chairperson_only(request.user)
+        visible_fields = (
+            CHAIRPERSON_VISIBLE_TRACKED_FIELDS if chairperson_only else Person.TRACKED_FIELDS
+        )
+
+        if chairperson_only:
+            committees = Committee.objects.filter(
+                pk__in=CommitteeMembership.objects.active()
+                .filter(
+                    person__user=request.user,
+                    role__in=(CommitteeRole.CHAIRPERSON, CommitteeRole.CO_CHAIR),
+                )
+                .values_list("committee_id", flat=True)
+            ).order_by("name")
+        else:
+            committees = Committee.objects.filter(is_active=True).order_by("name")
+
+        committee_id = None
+        raw_committee_id = request.GET.get("committee") or ""
+        if raw_committee_id:
+            try:
+                committee_id = int(raw_committee_id)
+            except ValueError:
+                committee_id = None
+
+        queryset = self.get_queryset(request).filter(has_missing_data=True)
+        if committee_id is not None:
+            roster = (
+                CommitteeMembership.objects.active()
+                .filter(committee_id=committee_id)
+                .values_list("person_id", flat=True)
+            )
+            queryset = queryset.filter(pk__in=roster)
+
+        entries = []
+        for person in queryset:
+            missing = [field for field in visible_fields if field in person.missing_fields]
+            if not missing:
+                # Every gap this person has lives in a field this role
+                # cannot see at all -- so, as far as this report is
+                # concerned, there is nothing outstanding to report.
+                continue
+            entries.append(
+                {
+                    "display_name": (
+                        f"{person.first_name} {person.last_name}".strip()
+                        if chairperson_only
+                        else person.full_name
+                    ),
+                    "nickname": person.nickname,
+                    "mobile_number": person.mobile_number,
+                    "email": person.email,
+                    "missing_labels": [MISSING_FIELD_LABELS[field] for field in missing],
+                }
+            )
+
+        report_label = "missing-data chase list"
+        if committee_id is not None:
+            report_label = f"{report_label} — committee {committee_id}"
+        AccessLog.record(
+            user=request.user,
+            report=report_label[:120],
+            ip=request.META.get("REMOTE_ADDR"),
+        )
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Missing-data chase list",
+            "opts": self.model._meta,
+            "entries": entries,
+            "printed_at": timezone.now(),
+            "committees": committees,
+            "selected_committee": raw_committee_id,
+            "chairperson_only": chairperson_only,
+        }
+        return render(request, "admin/people/person/missing_data.html", context)
 
 
 class HouseholdPersonInline(TabularInline):

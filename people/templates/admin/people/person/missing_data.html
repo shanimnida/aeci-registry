@@ -1,0 +1,112 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        /* This page is a working document meant to be printed and carried
+           around with a pen, not a screen report. On screen it matches the
+           rest of AEGIS's Unfold theme; on paper none of the app chrome
+           belongs, dark backgrounds waste toner, and a person's entry must
+           never straddle a page break. */
+        @media print {
+            .no-print { display: none !important; }
+            * {
+                background: #fff !important;
+                color: #000 !important;
+                box-shadow: none !important;
+                text-shadow: none !important;
+            }
+            body { margin: 0; }
+            .chase-entry {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border-color: #999 !important;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block header %}<div class="no-print">{{ block.super }}</div>{% endblock %}
+{% block nav-sidebar %}<div class="no-print">{{ block.super }}</div>{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div>
+        <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight mb-1">
+            Missing-data chase list
+        </div>
+        {% if chairperson_only %}
+            <p class="text-sm text-base-500 dark:text-base-400">
+                Your committee's people with a gap the office is still chasing. Only what you can
+                already see elsewhere in AEGIS is named below.
+            </p>
+        {% else %}
+            <p class="text-sm text-base-500 dark:text-base-400">
+                Everyone with a gap in their record, and exactly what to ask for -- hand a page to
+                whoever is walking the room.
+            </p>
+        {% endif %}
+        <p class="text-sm text-base-400 dark:text-base-500 mt-1">
+            Printed {{ printed_at|date:"F j, Y, g:i a" }}
+        </p>
+    </div>
+    <div class="no-print flex items-center gap-2">
+        <a href="{% url 'admin:people_person_changelist' %}"
+           class="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+            Back to People
+        </a>
+        <button type="button" onclick="window.print()"
+                class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-4 py-2 text-[14px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer">
+            Print
+        </button>
+    </div>
+</div>
+
+{% if committees %}
+    <form method="get" class="no-print mb-6 flex items-center gap-2">
+        <label for="committee" class="text-sm text-base-500 dark:text-base-400">Committee</label>
+        <select name="committee" id="committee" onchange="this.form.submit()"
+                class="border border-base-200 rounded-default text-sm px-2 py-1.5 dark:bg-base-900 dark:border-base-700 dark:text-font-default-dark">
+            <option value="">All{% if not chairperson_only %} committees{% endif %}</option>
+            {% for committee in committees %}
+                <option value="{{ committee.pk }}" {% if selected_committee == committee.pk|stringformat:"s" %}selected{% endif %}>
+                    {{ committee.name }}
+                </option>
+            {% endfor %}
+        </select>
+        <noscript>
+            <button type="submit" class="text-sm text-primary-600 dark:text-primary-400">Filter</button>
+        </noscript>
+    </form>
+{% endif %}
+
+{% if entries %}
+    <div class="flex flex-col gap-3">
+        {% for entry in entries %}
+            <div class="chase-entry bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+                <div class="text-lg font-semibold text-font-important-light dark:text-font-important-dark">
+                    {{ entry.display_name }}{% if entry.nickname %} <span class="text-base-400 font-normal text-base">&quot;{{ entry.nickname }}&quot;</span>{% endif %}
+                </div>
+                <div class="text-sm text-base-500 dark:text-base-400 mt-0.5">
+                    {% if entry.mobile_number %}{{ entry.mobile_number }}{% endif %}
+                    {% if entry.mobile_number and entry.email %} &middot; {% endif %}
+                    {% if entry.email %}{{ entry.email }}{% endif %}
+                    {% if not entry.mobile_number and not entry.email %}
+                        <span class="italic">No contact number or email on file</span>
+                    {% endif %}
+                </div>
+                <div class="text-sm mt-2">
+                    <span class="font-semibold text-red-700 dark:text-red-400">Missing:</span>
+                    <span class="text-base-700 dark:text-base-300">{{ entry.missing_labels|join:", " }}</span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="bg-green-50 border border-green-200 dark:bg-green-500/10 dark:border-green-900 rounded-default p-4 text-sm text-green-700 dark:text-green-400">
+        Nobody outstanding{% if selected_committee %} on this committee{% endif %} right now --
+        every record on file is complete.
+    </div>
+{% endif %}
+{% endblock %}

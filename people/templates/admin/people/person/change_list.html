@@ -1,0 +1,21 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% comment %}
+A link from the changelist to the printable missing-data chase list (see
+people.admin.PersonAdmin.missing_data_view). Placed alongside the existing
+"+ Add" object tool rather than a bulk admin action -- the normal ask is
+"print everyone outstanding", not "tick 40 checkboxes first" -- and shown
+for every role that can reach this changelist at all, chairperson included,
+since the view itself narrows what each role actually sees.
+{% endcomment %}
+{% block object-tools-items %}
+    <div class="flex flex-row items-center">
+        <a href="{% url 'admin:people_person_missing_data' %}"
+           class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-3 h-[38px] text-[13px] border border-base-200 bg-white text-base-700 hover:bg-base-50 dark:bg-base-900 dark:border-base-700 dark:text-base-300 dark:hover:bg-base-800/60">
+            <span class="material-symbols-outlined md-18" aria-hidden="true">checklist</span>
+            {% translate "Missing-data chase list" %}
+        </a>
+    </div>
+    {{ block.super }}
+{% endblock %}
