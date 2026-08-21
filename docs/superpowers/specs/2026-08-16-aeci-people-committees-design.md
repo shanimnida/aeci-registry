@@ -763,6 +763,37 @@ Tracked, not blocking implementation.
 
 ---
 
-## 11. Next step
+## 11. Planned: a public API for the church website
+
+Requested 2026-08-17, explicitly **not for now** — the church intends to build a public website
+after AEGIS, and to announce birthdays and wedding anniversaries there rather than in AEGIS's own
+reports. Recorded here so the decision that matters is made before the code exists, not after.
+
+**The thing to get right is not the API. It is the change in audience.** Every privacy decision in
+this document was made for an audience of roughly twenty officers — D12 withholds addresses from
+twelve chairpersons, D17 shows month and day but never the birth year so nobody learns an age. A
+public website is a different question entirely: the audience becomes anyone on the internet,
+including people who have no connection to the congregation.
+
+Two consequences follow, and both are cheaper to decide now than to retrofit:
+
+- **`greeting_opt_out` is the wrong default for publication.** It works for an internal list: the
+  church greets its members unless someone asks otherwise. For a public page, the honest default is
+  the reverse — nobody's name appears until they have said it may. That is a second, separate
+  field, not a reinterpretation of the existing one, because a member who is happy to be greeted in
+  the hall has not thereby agreed to be listed on the internet.
+- **The consent form should say so.** Members are signing a data privacy clause that describes
+  internal church use. Publication to a public website is a different purpose, and adding a line
+  now costs a sentence; adding it later costs re-collecting every signature.
+
+**Shape, when it is built:** read-only, no personal data beyond a display name and a day and month,
+never a birth year, never a member number, never contact details. Authenticated and rate-limited
+even so, because an endpoint returning "everyone with a birthday this week" is a membership roster
+by another name if it can be enumerated. Serving a pre-rendered list the website fetches is
+safer than exposing a queryable interface.
+
+---
+
+## 12. Next step
 
 Produce the implementation plan for Phase A from this document.
