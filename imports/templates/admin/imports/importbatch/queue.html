@@ -1,0 +1,181 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="mb-6">
+    <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight mb-1">
+        Review queue
+    </div>
+    <p class="text-sm text-base-500 dark:text-base-400">
+        Every staged person waiting on a decision, from every batch, in one place. Nothing below
+        is in the register until it shows as Approved — you can stop here and come back any time.
+    </p>
+</div>
+
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500">Total</div>
+        <div class="text-2xl font-semibold text-font-important-light dark:text-font-important-dark">{{ counts.total }}</div>
+    </div>
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-base-400 dark:text-base-500">Pending</div>
+        <div class="text-2xl font-semibold text-font-important-light dark:text-font-important-dark">{{ counts.pending }}</div>
+    </div>
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-green-700 dark:text-green-400">Approved</div>
+        <div class="text-2xl font-semibold text-green-700 dark:text-green-400">{{ counts.approved }}</div>
+    </div>
+    <div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-4">
+        <div class="text-xs uppercase font-semibold text-red-700 dark:text-red-400">Rejected</div>
+        <div class="text-2xl font-semibold text-red-700 dark:text-red-400">{{ counts.rejected }}</div>
+    </div>
+</div>
+
+{% if next_row %}
+    <a href="{{ next_row_url }}" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-5 py-2.5 text-[14px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer mb-6">
+        Continue reviewing ({{ counts.pending }} pending{% if batch_filter %} in this batch{% endif %})
+    </a>
+{% else %}
+    <div class="bg-green-50 border border-green-200 dark:bg-green-500/10 dark:border-green-900 rounded-default p-4 mb-6 text-sm text-green-700 dark:text-green-400">
+        {% if batch_filter %}Every entry in this batch has been decided.{% else %}Every staged entry has been decided.{% endif %}
+    </div>
+{% endif %}
+
+{% comment %}
+One combined form for search and the batch filter, so submitting either one
+keeps the other -- the status tabs below are plain links that in turn carry
+both of these forward. "add a filter for the batches" was the volunteer's
+own request, sitting right next to the search that already existed on the
+per-batch list (imports/admin.py's _row_matches_search) since finding the
+paper in your hand is still the main way anyone navigates this screen, now
+across batches instead of within just one.
+{% endcomment %}
+<form method="get" class="mb-4 flex flex-col sm:flex-row gap-3">
+    <div class="bg-white border border-base-200 flex flex-row items-center px-3 rounded-default shadow-xs w-full flex-1 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary-600 dark:bg-base-900 dark:border-base-700">
+        <span class="material-symbols-outlined md-18 text-base-400 dark:text-base-500" aria-hidden="true">search</span>
+        <input type="text"
+               name="q"
+               value="{{ query }}"
+               autocomplete="off"
+               class="grow font-medium min-w-0 overflow-hidden p-2.5 placeholder-font-subtle-light truncate focus:outline-hidden dark:bg-base-900 dark:placeholder-font-subtle-dark dark:text-font-default-dark"
+               placeholder="Search by surname, first name, or image filename (e.g. IMG_5883)" />
+        {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        {% if query %}
+            <a href="?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if batch_filter %}batch={{ batch_filter }}{% endif %}" class="text-base-400 dark:text-base-500 hover:text-base-600 dark:hover:text-base-300 ml-1" title="Clear search">
+                <span class="material-symbols-outlined md-18" aria-hidden="true">close</span>
+            </a>
+        {% endif %}
+    </div>
+    <div class="bg-white border border-base-200 rounded-default shadow-xs dark:bg-base-900 dark:border-base-700 sm:w-64">
+        <select name="batch"
+                aria-label="Filter by batch"
+                class="w-full font-medium p-2.5 bg-transparent focus:outline-hidden dark:text-font-default-dark cursor-pointer">
+            <option value="">All batches</option>
+            {% for b in batches %}
+                <option value="{{ b.pk }}" {% if batch_filter == b.pk|stringformat:"s" %}selected{% endif %}>{{ b }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% comment %}
+    Always visible, not just on small screens: changing the batch <select>
+    deliberately does not auto-submit on its own (WCAG 3.2.2 "On Input" --
+    a form control changing value must not itself trigger a context change
+    such as a full page navigation), so this is the one and only way to
+    apply it, and must never be the thing a reviewer can't find.
+    {% endcomment %}
+    <button type="submit" class="font-medium text-sm rounded-default px-4 py-2.5 border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent dark:hover:bg-base-800/80 cursor-pointer whitespace-nowrap">
+        Apply filters
+    </button>
+</form>
+
+{% comment %}
+"a way to see, at a glance, which rows are still pending" -- each tab
+carries its own live count (scoped to the batch filter above, same as the
+per-batch progress page's tabs), so the reviewer never has to count status
+badges down the table to know what is left.
+{% endcomment %}
+<div class="flex flex-wrap gap-2 mb-6" role="tablist" aria-label="Filter by status">
+    <a href="?{% if query %}q={{ query|urlencode }}&{% endif %}{% if batch_filter %}batch={{ batch_filter }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if not status_filter %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        All {{ counts.total }}
+    </a>
+    <a href="?status=PENDING{% if query %}&q={{ query|urlencode }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if status_filter == "PENDING" %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        Pending {{ counts.pending }}
+    </a>
+    <a href="?status=APPROVED{% if query %}&q={{ query|urlencode }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if status_filter == "APPROVED" %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        Approved {{ counts.approved }}
+    </a>
+    <a href="?status=REJECTED{% if query %}&q={{ query|urlencode }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}"
+       class="text-xs font-semibold uppercase tracking-wide px-3 py-1.5 rounded-default border {% if status_filter == "REJECTED" %}bg-primary-600 text-white border-transparent{% else %}bg-white text-base-600 border-base-200 hover:bg-base-50 dark:bg-transparent dark:border-base-700 dark:text-base-400 dark:hover:bg-base-800/60{% endif %}">
+        Rejected {{ counts.rejected }}
+    </a>
+</div>
+
+<div class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-base-50 dark:bg-base-800 text-left text-xs uppercase text-base-400 dark:text-base-500">
+            <tr>
+                <th class="px-4 py-3">Name</th>
+                <th class="px-4 py-3">Batch</th>
+                <th class="px-4 py-3">Source image</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-base-200 dark:divide-base-800">
+            {% for row in rows %}
+                <tr>
+                    <td class="px-4 py-3 text-important">
+                        {{ row }}
+                        {% if row.error_message %}
+                            <div class="text-xs text-red-600 dark:text-red-500 mt-1">{{ row.error_message }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-base-500 dark:text-base-400">
+                        {% comment %}
+                        "which batch each person came from, visible on the
+                        row, so a filtered and an unfiltered view read the
+                        same way" -- always shown, not only when the batch
+                        filter is cleared.
+                        {% endcomment %}
+                        <a href="?batch={{ row.batch_id }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if query %}&q={{ query|urlencode }}{% endif %}" class="hover:underline hover:text-primary-600 dark:hover:text-primary-400">
+                            {{ row.batch }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-3 text-base-400">{{ row.raw_data.source_image|default:"—" }}</td>
+                    <td class="px-4 py-3">
+                        {% if row.status == "PENDING" %}
+                            <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded-xs bg-base-100 text-base-700 dark:bg-base-500/20 dark:text-base-400">Pending</span>
+                        {% elif row.status == "APPROVED" %}
+                            <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded-xs bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400">Approved</span>
+                        {% else %}
+                            <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded-xs bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400">Rejected</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        {% if row.status == "PENDING" %}
+                            <a href="{% url 'admin:imports_importbatch_review' row.batch_id row.pk %}?queue_return=1{% if query %}&queue_q={{ query|urlencode }}{% endif %}{% if status_filter %}&queue_status={{ status_filter }}{% endif %}{% if batch_filter %}&queue_batch={{ batch_filter }}{% endif %}" class="text-primary-600 dark:text-primary-400 hover:underline">Review</a>
+                        {% elif row.created_person %}
+                            <a href="{% url 'admin:people_person_change' row.created_person.pk %}" class="text-primary-600 dark:text-primary-400 hover:underline">View person</a>
+                        {% else %}
+                            <a href="{% url 'admin:imports_importbatch_review' row.batch_id row.pk %}?queue_return=1{% if query %}&queue_q={{ query|urlencode }}{% endif %}{% if status_filter %}&queue_status={{ status_filter }}{% endif %}{% if batch_filter %}&queue_batch={{ batch_filter }}{% endif %}" class="text-base-400 hover:underline">View</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-8 text-center text-sm text-base-400 dark:text-base-500">
+                        {% if query %}
+                            No entry matches “{{ query }}”{% if status_filter %} among {{ status_filter|lower }} entries{% endif %}{% if batch_filter %} in this batch{% endif %}. Try clearing the batch filter or a shorter search.
+                        {% else %}
+                            No entries{% if status_filter %} with status {{ status_filter|lower }}{% endif %}{% if batch_filter %} in this batch{% endif %}.
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -41,14 +41,7 @@ class ImportBatch(models.Model):
         return f"{label} — {self.uploaded_at:%Y-%m-%d %H:%M}"
 
     def counts(self) -> dict:
-        tally = Counter(self.rows.values_list("status", flat=True))
-        total = sum(tally.values())
-        return {
-            "total": total,
-            "pending": tally.get(StagedPersonStatus.PENDING, 0),
-            "approved": tally.get(StagedPersonStatus.APPROVED, 0),
-            "rejected": tally.get(StagedPersonStatus.REJECTED, 0),
-        }
+        return status_counts(self.rows.all())
 
     def next_pending(self):
         return self.rows.filter(status=StagedPersonStatus.PENDING).order_by("sequence").first()
@@ -58,6 +51,22 @@ class StagedPersonStatus(models.TextChoices):
     PENDING = "PENDING", "Pending"
     APPROVED = "APPROVED", "Approved"
     REJECTED = "REJECTED", "Rejected"
+
+
+def status_counts(queryset) -> dict:
+    """Tally a StagedPerson queryset by status. Shared by ImportBatch.counts
+    (scoped to one batch) and the cross-batch review queue (imports/admin.py's
+    queue_view), which needs the identical total/pending/approved/rejected
+    shape but scoped to whatever batch filter -- or none -- is active there.
+    """
+    tally = Counter(queryset.values_list("status", flat=True))
+    total = sum(tally.values())
+    return {
+        "total": total,
+        "pending": tally.get(StagedPersonStatus.PENDING, 0),
+        "approved": tally.get(StagedPersonStatus.APPROVED, 0),
+        "rejected": tally.get(StagedPersonStatus.REJECTED, 0),
+    }
 
 
 class StagedPerson(models.Model):

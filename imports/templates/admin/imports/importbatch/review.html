@@ -3,10 +3,17 @@
 
 {% block content %}
 <div class="mb-6">
-    <a href="{% url 'admin:imports_importbatch_change' batch.pk %}" class="text-sm text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1 mb-3">
-        <span class="material-symbols-outlined md-16" aria-hidden="true">arrow_back</span>
-        Back to {{ batch }}
-    </a>
+    {% if queue_return %}
+        <a href="{% url 'admin:imports_importbatch_queue' %}?{% if queue_return.status %}status={{ queue_return.status }}&{% endif %}{% if queue_return.batch %}batch={{ queue_return.batch }}&{% endif %}{% if queue_return.q %}q={{ queue_return.q|urlencode }}{% endif %}" class="text-sm text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1 mb-3">
+            <span class="material-symbols-outlined md-16" aria-hidden="true">arrow_back</span>
+            Back to review queue
+        </a>
+    {% else %}
+        <a href="{% url 'admin:imports_importbatch_change' batch.pk %}" class="text-sm text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1 mb-3">
+            <span class="material-symbols-outlined md-16" aria-hidden="true">arrow_back</span>
+            Back to {{ batch }}
+        </a>
+    {% endif %}
 
     <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div>
@@ -156,6 +163,20 @@ throughout -- the congregation includes older volunteers.
 {% endcomment %}
 <form method="post" class="bg-white dark:bg-base-900 border border-base-200 dark:border-base-800 rounded-default shadow-xs p-8 max-w-4xl">
     {% csrf_token %}
+    {% comment %}
+    Carries the queue's active batch/status/search filters through the
+    approve/skip/reject submit, so imports/admin.py's review_view can send
+    the reviewer back into that same filtered queue afterwards instead of
+    losing it -- see _queue_return_context and ImportBatchAdmin._advance.
+    Absent entirely when this row was reached from a batch's own progress
+    page instead, which keeps that route's behaviour unchanged.
+    {% endcomment %}
+    {% if queue_return %}
+        <input type="hidden" name="queue_return" value="1">
+        <input type="hidden" name="queue_q" value="{{ queue_return.q }}">
+        <input type="hidden" name="queue_status" value="{{ queue_return.status }}">
+        <input type="hidden" name="queue_batch" value="{{ queue_return.batch }}">
+    {% endif %}
 
     <div class="mb-8">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Personal information</h2>

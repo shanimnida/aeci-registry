@@ -1,5 +1,6 @@
 import hashlib
 import re
+from urllib.parse import urlencode
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -14,7 +15,7 @@ from core.groups import is_chairperson_only
 from records.models import AccessLog
 
 from .forms import ChildFormSet, StagedPersonForm, UploadForm, children_initial, initial_from_data
-from .models import ImportBatch, StagedPerson, StagedPersonStatus
+from .models import ImportBatch, StagedPerson, StagedPersonStatus, status_counts
 from .parsing import ImportValidationError
 from .services import build_person_from_import, committee_cap_warning, possible_duplicate_warning
 from .spreadsheet import parse_import_file, write_blank_template_bytes
@@ -50,6 +51,114 @@ def _row_matches_search(row, normalized_query: str) -> bool:
     last = data.get("last_name") or ""
     haystacks = (last, first, f"{first} {last}", data.get("source_image") or "")
     return any(normalized_query in _normalize_search_text(text) for text in haystacks if text)
+
+
+# -- review queue (across every batch) -------------------------------------
+# "make the reviewing of persons not by batch but in a single location so i
+# dont have to transfer between the batches, add a filter for the batches"
+# -- the volunteer's own request. Batches are an artefact of how files were
+# uploaded, not of how the work is done; this section builds one merged,
+# filterable queue on top of the same StagedPerson rows the per-batch screens
+# already use, without changing how a single row is decided (still
+# review_view, unchanged in that respect).
+#
+# Ordering: (batch__uploaded_at, batch_id, sequence) -- oldest batch first,
+# each batch's own rows in their original upload order. Two reasons, not one:
+# a batch is itself one physical stack of paper (docs/IMPORT_TEMPLATE.md),
+# so keeping sequence as the tiebreak preserves whatever coherence that pile
+# already had, exactly as the single-batch screens do today; and ordering
+# batches oldest-first means the entries that have been waiting longest are
+# always reviewed first, so a growing backlog of new uploads can never
+# strand an older batch half-finished. Confidence was considered and
+# rejected: it optimises the reviewer's moment-to-moment effort but has
+# nothing to do with fairness across batches, and every field on this screen
+# stays editable regardless of confidence (review.html), so it is not a
+# signal this queue's ordering should chase. `batch_id` only breaks ties on
+# `uploaded_at` (auto_now_add, but not guaranteed unique to the microsecond)
+# -- it does not carry meaning on its own.
+_QUEUE_ORDER = ("batch__uploaded_at", "batch_id", "sequence")
+
+
+def _clean_batch_filter(raw) -> str:
+    raw = (raw or "").strip()
+    return raw if raw.isdigit() else ""
+
+
+def _clean_status_filter(raw) -> str:
+    raw = (raw or "").strip().upper()
+    return raw if raw in StagedPersonStatus.values else ""
+
+
+def _filtered_queue_rows(*, batch_id_filter="", status_filter="", query=""):
+    """Every StagedPerson matching the queue's batch/status/search filters,
+    in `_QUEUE_ORDER`. Search is applied in Python, same as the per-batch
+    list (_row_matches_search) and for the same reason: the searched fields
+    live inside a JSONField, and a realistic backlog -- a handful of batches
+    of tens of forms each -- is nowhere near large enough to need it done in
+    the database.
+    """
+    rows = StagedPerson.objects.select_related("batch", "created_person")
+    if batch_id_filter:
+        rows = rows.filter(batch_id=batch_id_filter)
+    if status_filter:
+        rows = rows.filter(status=status_filter)
+    rows = rows.order_by(*_QUEUE_ORDER)
+    if query:
+        normalized_query = _normalize_search_text(query)
+        return [row for row in rows if _row_matches_search(row, normalized_query)]
+    return list(rows)
+
+
+def _pending_queue_candidates(batch_id_filter, query):
+    return _filtered_queue_rows(
+        batch_id_filter=batch_id_filter, status_filter=StagedPersonStatus.PENDING, query=query
+    )
+
+
+def _next_pending_in_queue(current_batch, current_row, batch_id_filter, query):
+    """The next pending row after `current_row`, within the same filtered,
+    ordered set _pending_queue_candidates builds -- the queue equivalent of
+    _next_pending_row above."""
+    key = (current_batch.uploaded_at, current_batch.pk, current_row.sequence)
+    for row in _pending_queue_candidates(batch_id_filter, query):
+        if (row.batch.uploaded_at, row.batch_id, row.sequence) > key:
+            return row
+    return None
+
+
+def _queue_return_context(request):
+    """None unless this request carries the queue_return=1 marker a link or
+    hidden field from the queue put there -- see queue.html and review.html.
+    Reachable both on GET (a link from the queue's own rows) and POST (the
+    hidden fields carried through the review form's submit), so it reads
+    whichever of the two actually has the data.
+    """
+    source = request.POST if request.method == "POST" else request.GET
+    if source.get("queue_return") != "1":
+        return None
+    return {
+        "q": source.get("queue_q") or "",
+        "status": _clean_status_filter(source.get("queue_status")),
+        "batch": _clean_batch_filter(source.get("queue_batch")),
+    }
+
+
+def _review_url_with_queue(batch_id, row_id, queue_ctx):
+    url = reverse("admin:imports_importbatch_review", args=[batch_id, row_id])
+    params = {"queue_return": "1"}
+    if queue_ctx["q"]:
+        params["queue_q"] = queue_ctx["q"]
+    if queue_ctx["status"]:
+        params["queue_status"] = queue_ctx["status"]
+    if queue_ctx["batch"]:
+        params["queue_batch"] = queue_ctx["batch"]
+    return f"{url}?{urlencode(params)}"
+
+
+def _queue_list_url(queue_ctx):
+    url = reverse("admin:imports_importbatch_queue")
+    params = {k: v for k, v in queue_ctx.items() if v}
+    return f"{url}?{urlencode(params)}" if params else url
 
 
 @admin.register(ImportBatch)
@@ -101,6 +210,37 @@ class ImportBatchAdmin(ModelAdmin):
         if is_chairperson_only(request.user) or not request.user.has_perm(perm):
             raise PermissionDenied
 
+    def _stay(self, batch, row, queue_ctx):
+        """Redirect back to this same row -- used when a race (someone else
+        decided it first, see CRITICAL 2) means there is nothing new to
+        advance to. Keeps the queue's filters attached if that is where the
+        reviewer came from, so the "back to queue" link stays correct.
+        """
+        if queue_ctx is not None:
+            return redirect(_review_url_with_queue(batch.pk, row.pk, queue_ctx))
+        return redirect("admin:imports_importbatch_review", batch.pk, row.pk)
+
+    def _advance(self, batch, row, queue_ctx):
+        """Where the reviewer lands after skip/reject/approve. Outside the
+        queue this is unchanged: jump straight to the next pending row in
+        this batch, or the batch's own progress page once none remain
+        (_next_pending_row). From the queue, "next" and "nothing left" both
+        stay inside that same filtered, searched queue instead -- see
+        _next_pending_in_queue and _queue_list_url -- so approving one entry
+        keeps the volunteer moving through the queue they were working
+        without an extra page load, and only lands on the queue's own list
+        once that filtered set is actually exhausted.
+        """
+        if queue_ctx is not None:
+            next_row = _next_pending_in_queue(batch, row, queue_ctx["batch"], queue_ctx["q"])
+            if next_row is not None:
+                return redirect(_review_url_with_queue(next_row.batch_id, next_row.pk, queue_ctx))
+            return redirect(_queue_list_url(queue_ctx))
+        target = _next_pending_row(batch, after_sequence=row.sequence)
+        if target:
+            return redirect("admin:imports_importbatch_review", batch.pk, target.pk)
+        return redirect("admin:imports_importbatch_change", batch.pk)
+
     # -- list display ---------------------------------------------------
 
     @admin.display(description="Pending")
@@ -128,6 +268,11 @@ class ImportBatchAdmin(ModelAdmin):
                 "template/",
                 self.admin_site.admin_view(self.download_template_view),
                 name="imports_importbatch_download_template",
+            ),
+            path(
+                "queue/",
+                self.admin_site.admin_view(self.queue_view),
+                name="imports_importbatch_queue",
             ),
             path(
                 "<int:batch_id>/review/<int:row_id>/",
@@ -221,6 +366,57 @@ class ImportBatchAdmin(ModelAdmin):
         }
         return render(request, "admin/imports/importbatch/upload.html", context)
 
+    # -- review queue (every batch, one place) ---------------------------
+
+    def queue_view(self, request):
+        # Same permission as the per-batch progress page -- this is the same
+        # capability (see the rows still pending across every batch), merely
+        # not scoped to one of them.
+        self._require_reviewer(request, "imports.view_importbatch")
+
+        batch_filter = _clean_batch_filter(request.GET.get("batch"))
+        status_filter = _clean_status_filter(request.GET.get("status"))
+        query = (request.GET.get("q") or "").strip()
+
+        rows = _filtered_queue_rows(
+            batch_id_filter=batch_filter, status_filter=status_filter, query=query
+        )
+
+        # Counts (and the "Continue reviewing" target below) follow the batch
+        # filter but deliberately ignore the search box and the status tabs
+        # themselves -- exactly like the per-batch progress page's counts
+        # (ImportBatch.counts()) already ignore its own search box, so "how
+        # many remain" always means the true total, not "how many match what
+        # I just typed."
+        counts_qs = StagedPerson.objects.all()
+        if batch_filter:
+            counts_qs = counts_qs.filter(batch_id=batch_filter)
+        counts = status_counts(counts_qs)
+
+        pending_candidates = _pending_queue_candidates(batch_filter, query)
+        next_row = pending_candidates[0] if pending_candidates else None
+        queue_ctx = {"q": query, "status": status_filter, "batch": batch_filter}
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Review queue",
+            "opts": self.model._meta,
+            "rows": rows,
+            "counts": counts,
+            "batches": ImportBatch.objects.order_by("-uploaded_at"),
+            "batch_filter": batch_filter,
+            "status_filter": status_filter,
+            "query": query,
+            "next_row": next_row,
+            "next_row_url": (
+                _review_url_with_queue(next_row.batch_id, next_row.pk, queue_ctx)
+                if next_row
+                else ""
+            ),
+            "queue_ctx": queue_ctx,
+        }
+        return render(request, "admin/imports/importbatch/queue.html", context)
+
     # -- progress / batch detail ---------------------------------------
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
@@ -268,6 +464,18 @@ class ImportBatchAdmin(ModelAdmin):
         batch = get_object_or_404(ImportBatch, pk=batch_id)
         row = get_object_or_404(StagedPerson, pk=row_id, batch=batch)
 
+        # None when this row was reached from a batch's own progress page
+        # (today's route, unchanged below); a dict of the queue's active
+        # batch/status/search filters when it was reached from the merged
+        # review queue instead (queue.html's rows, and its "Continue
+        # reviewing" button, all link in carrying queue_return=1 -- see
+        # _queue_return_context). Read once here and threaded through both
+        # the template (for the hidden fields and back-link, see
+        # review.html) and every redirect below, so a decision made from the
+        # queue always returns to that same filtered, searched queue instead
+        # of snapping back to this one batch.
+        queue_ctx = _queue_return_context(request)
+
         # IMPORTANT 3 (2026-08-16 import fixes): every Person view in this
         # system writes an AccessLog row (people/admin.py's PersonAdmin --
         # the RA 10173 "who looked at whom" trail); this screen renders the
@@ -299,10 +507,7 @@ class ImportBatchAdmin(ModelAdmin):
             action = request.POST.get("action")
 
             if action == "skip":
-                target = _next_pending_row(batch, after_sequence=row.sequence)
-                if target:
-                    return redirect("admin:imports_importbatch_review", batch.pk, target.pk)
-                return redirect("admin:imports_importbatch_change", batch.pk)
+                return self._advance(batch, row, queue_ctx)
 
             if action == "reject":
                 # Same overlapping-request protection as "approve" below --
@@ -316,17 +521,14 @@ class ImportBatchAdmin(ModelAdmin):
                             "nothing was changed.",
                             messages.WARNING,
                         )
-                        return redirect("admin:imports_importbatch_review", batch.pk, row.pk)
+                        return self._stay(batch, row, queue_ctx)
                     row.status = StagedPersonStatus.REJECTED
                     row.error_message = ""
                     row.reviewed_by = request.user
                     row.reviewed_at = timezone.now()
                     row.save()
                 self.message_user(request, f"Rejected {row}.", messages.WARNING)
-                target = _next_pending_row(batch, after_sequence=row.sequence)
-                if target:
-                    return redirect("admin:imports_importbatch_review", batch.pk, target.pk)
-                return redirect("admin:imports_importbatch_change", batch.pk)
+                return self._advance(batch, row, queue_ctx)
 
             if action == "approve":
                 form = StagedPersonForm(request.POST)
@@ -360,7 +562,7 @@ class ImportBatchAdmin(ModelAdmin):
                                 "nothing was created.",
                                 messages.WARNING,
                             )
-                            return redirect("admin:imports_importbatch_review", batch.pk, row.pk)
+                            return self._stay(batch, row, queue_ctx)
 
                         row.edited_data = {**row.effective_data, **cleaned}
                         row.edited_data["children"] = children
@@ -386,10 +588,7 @@ class ImportBatchAdmin(ModelAdmin):
                         self.message_user(
                             request, f"Approved {approved_person.full_name}.", messages.SUCCESS
                         )
-                        target = _next_pending_row(batch, after_sequence=row.sequence)
-                        if target:
-                            return redirect("admin:imports_importbatch_review", batch.pk, target.pk)
-                        return redirect("admin:imports_importbatch_change", batch.pk)
+                        return self._advance(batch, row, queue_ctx)
                     else:
                         self.message_user(
                             request,
@@ -464,5 +663,6 @@ class ImportBatchAdmin(ModelAdmin):
             "read_only": read_only,
             "counts": counts,
             "progress_percent": progress_percent,
+            "queue_return": queue_ctx,
         }
         return render(request, "admin/imports/importbatch/review.html", context)

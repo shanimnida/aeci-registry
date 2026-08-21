@@ -97,6 +97,20 @@ UNFOLD = {
                 "separator": True,
                 "items": [
                     {
+                        # The daily screen now: every staged person still
+                        # waiting on a decision, from every batch, in one
+                        # place (2026-08-21 review queue redesign) -- listed
+                        # first since it is how reviewing actually starts.
+                        "title": _("Review queue"),
+                        "icon": "fact_check",
+                        "link": reverse_lazy("admin:imports_importbatch_queue"),
+                        "permission": lambda request: request.user.has_perm(
+                            "imports.view_importbatch"
+                        ),
+                    },
+                    {
+                        # Uploading a file, and reconciling one batch against
+                        # the sheets it came from, both still start here.
                         "title": _("Profiling form import"),
                         "icon": "upload_file",
                         "link": reverse_lazy("admin:imports_importbatch_changelist"),
