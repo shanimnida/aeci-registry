@@ -27,9 +27,32 @@ apps.get_app_config("auth").verbose_name = "Administration"
 # nothing a user couldn't already see.
 _APP_ORDER = ["people", "committees", "records", "auth", "core"]
 
+# Same three screens the sidebar drops (see UNFOLD["SIDEBAR"] in
+# settings.py) and for the same reason: Committee and Position change only
+# if the church restructures, and Committee Function rides along with
+# Committee. Their ModelAdmins stay registered -- unregistering either would
+# break the autocomplete widgets on CommitteeMembershipAdmin and PersonAdmin,
+# which look up the *registered* admin of the field's target model -- so
+# this only strips them out of the app-index listing (the admin/index.html
+# and admin/<app_label>/ pages, both built from get_app_list). A user with
+# the view permission can still reach the changelist by URL directly.
+_HIDDEN_FROM_APP_LIST = {
+    ("committees", "committee"),
+    ("committees", "committeefunction"),
+    ("committees", "position"),
+}
+
 
 def _ordered_get_app_list(self, request, app_label=None):
     app_list = AdminSite.get_app_list(self, request, app_label)
+    for app in app_list:
+        app["models"] = [
+            model
+            for model in app["models"]
+            if (app["app_label"], model["model"]._meta.model_name)
+            not in _HIDDEN_FROM_APP_LIST
+        ]
+    app_list = [app for app in app_list if app["models"]]
     return sorted(
         app_list,
         key=lambda app: (

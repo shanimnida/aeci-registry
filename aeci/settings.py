@@ -107,17 +107,19 @@ UNFOLD = {
                 ],
             },
             {
+                # Committee and Position (and Committee Function, an inline
+                # of Committee, not listed here at all) are deliberately
+                # absent: twelve committees and five offices, both already
+                # seeded, that change only if the church restructures. Their
+                # ModelAdmins stay registered (see committees/admin.py) so
+                # the autocomplete widgets below keep working and the direct
+                # URL still loads for whoever holds the view permission --
+                # only this navigation entry is gone. Committee memberships
+                # is the daily screen; Appointments is occasional (an
+                # officer change), so both stay.
                 "title": _("Committees"),
                 "separator": True,
                 "items": [
-                    {
-                        "title": _("Committees"),
-                        "icon": "groups",
-                        "link": reverse_lazy("admin:committees_committee_changelist"),
-                        "permission": lambda request: request.user.has_perm(
-                            "committees.view_committee"
-                        ),
-                    },
                     {
                         "title": _("Committee memberships"),
                         "icon": "badge",
@@ -126,14 +128,6 @@ UNFOLD = {
                         ),
                         "permission": lambda request: request.user.has_perm(
                             "committees.view_committeemembership"
-                        ),
-                    },
-                    {
-                        "title": _("Positions"),
-                        "icon": "military_tech",
-                        "link": reverse_lazy("admin:committees_position_changelist"),
-                        "permission": lambda request: request.user.has_perm(
-                            "committees.view_position"
                         ),
                     },
                     {
@@ -147,7 +141,12 @@ UNFOLD = {
                 ],
             },
             {
-                "title": _("Records"),
+                # Consulted rarely, and only by ICT or the Board: photographed
+                # forms, the read-only access trail, purge evidence, and the
+                # login/permission screens. Named after who reaches for it,
+                # not after the Django apps behind it, and placed last so it
+                # never competes with the Secretariat's daily work above.
+                "title": _("For ICT & the Board"),
                 "separator": True,
                 "items": [
                     {
@@ -174,12 +173,6 @@ UNFOLD = {
                             "records.view_purgerecord"
                         ),
                     },
-                ],
-            },
-            {
-                "title": _("Administration"),
-                "separator": True,
-                "items": [
                     {
                         "title": _("Users"),
                         "icon": "manage_accounts",
