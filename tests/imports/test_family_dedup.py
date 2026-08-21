@@ -160,6 +160,51 @@ def test_linking_the_second_parent_is_reported_on_the_approval_result(
 
 
 @pytest.mark.django_db
+def test_a_child_with_no_recorded_birthdate_is_refused_not_silently_duplicated(
+    client, secretariat_user, family_batch
+):
+    """Bug 1's NULL-blindness investigation, extended to child matching:
+    _find_child_match filters candidates on `date_of_birth=<value>`, the
+    same exact-match shape people.admin.find_possible_duplicates had before
+    its fix -- so a pre-existing child with date_of_birth = NULL (e.g. typed
+    in by hand, without a birthdate, before this import) is excluded by
+    that filter exactly the way a birthdate-less seeded officer was.
+
+    Unlike the Person-level bug, this does *not* silently create a
+    duplicate: with zero exact matches but a same-name candidate still on
+    file, _find_child_match falls through to its own "ambiguous" case and
+    build_person_from_import raises, refusing the approval instead of
+    guessing -- the same refusal test_an_ambiguous_child_match_is_refused_
+    not_guessed below exercises for a *different*-birthdate collision. That
+    refusal is deliberate (see _find_child_match's docstring: "AEGIS will
+    not guess which one this is") and must not be weakened into an
+    auto-link, unlike the Person-level warning which is safe to widen
+    because it never blocks. So no code change follows from this -- this
+    test exists to pin down and document that the child path already fails
+    safe, not silently.
+    """
+    batch, rows = family_batch
+    husband = rows["MARK JEROME"]
+    # A child already on file under the same name (the split of "SHILOH
+    # ANDREI K. JOSE" against parent last name "Jose" -- see
+    # _split_child_name), but with no birthdate recorded -- analogous to a
+    # seeded officer with no date_of_birth.
+    Person.objects.create(last_name="Jose", first_name="Shiloh Andrei K.")
+    client.force_login(secretariat_user)
+
+    response = client.post(_review_url(batch, husband), _post_data(husband))
+    assert response.status_code == 200  # re-rendered, not redirected -- refused
+
+    husband.refresh_from_db()
+    assert husband.status == StagedPersonStatus.PENDING
+    assert husband.error_message
+    assert "SHILOH" in husband.error_message.upper()
+    # Nothing partially written: still just the one pre-existing child, no
+    # second one created under the same name.
+    assert Person.objects.filter(last_name="Jose", first_name__iexact="Shiloh Andrei K.").count() == 1
+
+
+@pytest.mark.django_db
 def test_an_ambiguous_child_match_is_refused_not_guessed(client, secretariat_user, family_batch):
     """A name match with a *different* date of birth than the already-created
     child must not be silently treated as the same child, and must not

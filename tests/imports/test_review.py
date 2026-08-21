@@ -446,3 +446,27 @@ def test_a_possible_duplicate_is_shown_before_approving_not_after(
     assert response.status_code == 200
     body = response.content.decode()
     assert "may duplicate an existing record" in body
+
+
+@pytest.mark.django_db
+def test_a_staged_row_still_warns_against_a_seeded_officer_with_no_birthdate(
+    client, secretariat_user, staged_batch
+):
+    """Same NULL-blindness fix as people.admin.find_possible_duplicates,
+    exercised through the review screen this time. seed_officers leaves
+    chairpersons with date_of_birth = NULL; a staged row for that same
+    person with a real birthdate must still surface the warning, worded so
+    the reviewer knows it is a name-only match rather than an exact one.
+    """
+    batch, rows = staged_batch
+    row = rows["DELACRUZJUAN MIGUEL"]
+    # Same name as the staged row, but no birthdate on file -- the seeded
+    # officer case, not an exact match.
+    Person.objects.create(last_name=row.raw_data["last_name"], first_name=row.raw_data["first_name"])
+    client.force_login(secretariat_user)
+
+    response = client.get(_review_url(batch, row))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "may duplicate an existing record" in body
+    assert "no birthdate on file" in body

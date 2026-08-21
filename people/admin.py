@@ -1,5 +1,6 @@
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
+from django.db.models import Q
 from django.db.models.constants import LOOKUP_SEP
 from django.shortcuts import render
 from django.urls import path
@@ -34,15 +35,48 @@ MISSING_FIELD_LABELS = {
 
 
 def find_possible_duplicates(person):
-    """A soft warning, never a block. Two people genuinely can share a name."""
+    """A soft warning, never a block. Two people genuinely can share a name.
+
+    An absent date of birth is not evidence of a different person. The six
+    chairpersons seed_officers creates from data/officers.csv have no
+    date-of-birth column to draw from, so all six sit in the register with
+    date_of_birth = NULL -- and one of them submitting their own profiling
+    form later, with a real birthdate this time, must still be recognised as
+    the same person. So when the candidate carries a birthdate, this matches
+    existing same-name records that share that exact birthdate *or* have no
+    birthdate on file; only a same-name record with a genuinely *different*
+    birthdate is excluded. When the candidate has no birthdate of its own,
+    matching stays name-only, exactly as before.
+    """
     matches = Person.objects.filter(
         last_name__iexact=person.last_name, first_name__iexact=person.first_name
     )
     if person.date_of_birth:
-        matches = matches.filter(date_of_birth=person.date_of_birth)
+        matches = matches.filter(
+            Q(date_of_birth=person.date_of_birth) | Q(date_of_birth__isnull=True)
+        )
     if person.pk:
         matches = matches.exclude(pk=person.pk)
     return matches
+
+
+def describe_duplicate_match(candidate, date_of_birth):
+    """One line of *why* `candidate` matched, for whoever is reviewing the
+    warning. A name-and-birthdate match is much stronger evidence than a
+    name-only match against a record that simply has no birthdate on file
+    (exactly the seeded-officer case above) -- the reviewer should not have
+    to guess which kind of match they are looking at.
+
+    Relies on find_possible_duplicates' own filter: when `date_of_birth` is
+    given, every candidate in its result either shares that exact date or
+    has none at all, so checking candidate.date_of_birth is enough to tell
+    the two cases apart without re-comparing the dates here.
+    """
+    if date_of_birth and candidate.date_of_birth:
+        return f"{candidate} (same name and birthdate)"
+    if date_of_birth and not candidate.date_of_birth:
+        return f"{candidate} (same name; existing record has no birthdate on file)"
+    return f"{candidate} (name match only)"
 
 
 def assign_member_numbers(queryset):
@@ -68,13 +102,19 @@ def assign_member_numbers(queryset):
 
 class HouseholdMemberInline(TabularInline):
     model = HouseholdMember
-    extra = 1
+    # extra = 0: a rendered-but-untouched blank row is not the trap (an
+    # unchanged form posts clean either way) -- but *touching* one at all
+    # (e.g. clicking into the household autocomplete) makes it a row the
+    # formset must validate, and it has no data in it. The volunteer's only
+    # way out was ticking Delete on a row they never meant to create.
+    # "Add another" is the explicit way in now.
+    extra = 0
     autocomplete_fields = ("household",)
 
 
 class CommitteeMembershipInline(TabularInline):
     model = CommitteeMembership
-    extra = 1
+    extra = 0  # Same trap, same fix -- see HouseholdMemberInline above.
     fields = ("committee", "function", "role", "date_joined", "date_left")
     autocomplete_fields = ("committee", "function")
 
@@ -148,10 +188,12 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
         obj.updated_by = request.user
         duplicates = find_possible_duplicates(obj)
         if duplicates.exists():
-            names = ", ".join(str(p) for p in duplicates[:3])
+            descriptions = ", ".join(
+                describe_duplicate_match(p, obj.date_of_birth) for p in duplicates[:3]
+            )
             self.message_user(
                 request,
-                f"This may duplicate an existing record: {names}. Saved anyway — "
+                f"This may duplicate an existing record: {descriptions}. Saved anyway — "
                 f"check and merge by hand if it is the same person.",
                 level=messages.WARNING,
             )
@@ -378,7 +420,7 @@ class HouseholdPersonInline(TabularInline):
     """
 
     model = HouseholdMember
-    extra = 1
+    extra = 0  # Same trap as HouseholdMemberInline above, same fix.
     autocomplete_fields = ("person",)
 
 

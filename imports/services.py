@@ -28,6 +28,7 @@ _find_child_match, _find_spouse_match, and the "linked" notices below.
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from committees.models import Committee, CommitteeMembership, CommitteeRole
@@ -301,12 +302,33 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
         return person, notices
 
 
+def _describe_duplicate_match(candidate, date_of_birth):
+    """Mirrors people.admin.describe_duplicate_match -- see there for the
+    full reasoning. Kept as a separate copy rather than an import because
+    this module works from a staged row's raw dict, not a Person, and the
+    two admin apps' write paths are already kept independent of each other
+    (see this module's own docstring and possible_duplicate_warning below).
+    """
+    if date_of_birth and candidate.date_of_birth:
+        return f"{candidate} (same name and birthdate)"
+    if date_of_birth and not candidate.date_of_birth:
+        return f"{candidate} (same name; existing record has no birthdate on file)"
+    return f"{candidate} (name match only)"
+
+
 def possible_duplicate_warning(data: dict) -> str | None:
     """Mirrors people.admin.PersonAdmin.save_model's soft duplicate warning,
     computed from a staged row's own field values rather than a saved
     Person -- so the reviewer sees it on the review screen before approving
     (MINOR 8), not as a flash message after the Person already exists.
     Never blocks: two people genuinely can share a name.
+
+    Same NULL-blindness fix as people.admin.find_possible_duplicates: an
+    absent date of birth on the *existing* record is not evidence it is a
+    different person (see that function's docstring for the seeded-officer
+    case this exists for), so when the staged row carries a birthdate, a
+    same-name existing record with no birthdate on file still counts as a
+    match, not just one with the identical date.
     """
     last_name = (data.get("last_name") or "").strip()
     first_name = (data.get("first_name") or "").strip()
@@ -315,11 +337,13 @@ def possible_duplicate_warning(data: dict) -> str | None:
     matches = Person.objects.filter(last_name__iexact=last_name, first_name__iexact=first_name)
     date_of_birth = data.get("date_of_birth")
     if date_of_birth:
-        matches = matches.filter(date_of_birth=date_of_birth)
+        matches = matches.filter(Q(date_of_birth=date_of_birth) | Q(date_of_birth__isnull=True))
     if not matches.exists():
         return None
-    names = ", ".join(str(candidate) for candidate in matches[:3])
-    return f"This may duplicate an existing record: {names}. Check before approving."
+    descriptions = ", ".join(
+        _describe_duplicate_match(candidate, date_of_birth) for candidate in matches[:3]
+    )
+    return f"This may duplicate an existing record: {descriptions}. Check before approving."
 
 
 def committee_cap_warning(data: dict) -> str | None:
