@@ -224,6 +224,12 @@ class HouseholdRole(models.TextChoices):
 
 
 class Household(TimeStampedModel):
+    # Normalized (title-cased, if currently shouting) on every save -- see
+    # core.capitalization. Same rule as Person.CAPITALIZED_FIELDS above;
+    # address holds the same kind of street address as Person.home_address
+    # and is normalized the same way, for the same reason.
+    CAPITALIZED_FIELDS = ("name", "address")
+
     name = models.CharField(max_length=200, help_text='For example, "Malong Family".')
     address = models.TextField(blank=True)
     date_of_marriage = models.DateField(null=True, blank=True)
@@ -248,7 +254,8 @@ class Household(TimeStampedModel):
             )
 
     def save(self, *args, **kwargs):
-        self.name = capitalize_words(self.name)
+        for field_name in self.CAPITALIZED_FIELDS:
+            setattr(self, field_name, capitalize_words(getattr(self, field_name)))
         super().save(*args, **kwargs)
 
 

@@ -149,3 +149,27 @@ def test_household_name_is_title_cased_when_shouting():
 def test_household_name_already_mixed_case_is_left_alone():
     household = Household.objects.create(name="Jose Family")
     assert household.name == "Jose Family"
+
+
+@pytest.mark.django_db
+def test_household_address_is_title_cased_when_shouting():
+    """Household.address holds the same kind of street address as
+    Person.home_address and must be normalized the same way."""
+    household = Household.objects.create(
+        name="Cruz Family", address="KC-109 CRUZ, LA TRINIDAD, BENGUET"
+    )
+    assert household.address == "KC-109 Cruz, La Trinidad, Benguet"
+
+
+@pytest.mark.django_db
+def test_household_address_already_mixed_case_is_left_alone():
+    household = Household.objects.create(
+        name="Cruz Family", address="123 Session Road, Baguio City"
+    )
+    assert household.address == "123 Session Road, Baguio City"
+
+
+@pytest.mark.django_db
+def test_household_blank_address_survives_save_as_blank():
+    household = Household.objects.create(name="Cruz Family")
+    assert household.address == ""
