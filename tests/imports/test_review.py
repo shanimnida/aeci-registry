@@ -149,7 +149,11 @@ def test_approving_a_person_who_ticked_three_committees_saves_and_shows_a_warnin
 
     person = Person.objects.get(last_name="Mangubat")
     assert CommitteeMembership.objects.filter(person=person).count() == 3
-    assert Household.objects.count() == 1
+    # Elena has no spouse_name, no children and no date_of_marriage on her
+    # row (well_formed_import.json) -- a single member alone is not a
+    # family, so approving her must create no Household at all (BUG,
+    # 2026-08-22: empty households).
+    assert Household.objects.count() == 0
 
     row.refresh_from_db()
     assert row.status == StagedPersonStatus.APPROVED

@@ -650,3 +650,69 @@ Ruling: R32 — CommitteeMembership's "max two self-selected committees" rule (s
   now accumulate self-selected committees indefinitely with only a message on save to notice it —
   mitigated by the warning firing in both the admin and the import review screen, and by rule 2
   (structural, not policy) staying a hard refusal.
+
+=== EMPTY HOUSEHOLDS: A FAMILY OF ONE IS NOT A FAMILY (401 tests) ===
+`build_person_from_import` created a Household for every approved row unconditionally. A member
+with no spouse, no children and no marriage date got a "{Surname} Family" household containing
+only themselves; the 22 forms waiting to be imported would have manufactured 22 of them.
+
+Ruling: R33 — a household is now created only when the row actually names a family: a spouse name,
+  a matched spouse, at least one child, or a date of marriage. The last is not decoration —
+  `date_of_marriage` lives on Household and has no home on Person, so a married member whose
+  spouse never submitted a form still needs somewhere to keep the date the paper records.
+  Implemented as `_ensure_household`, called at each point where something first genuinely needs
+  a household rather than up front, so the CRITICAL 1 child- and spouse-linking all still works —
+  the children loop calls it before its first real child entry and gets the same household back on
+  every later call. Deliberately NOT gated on `civil_status` or any other inference about whether
+  someone is married: the trigger is what the form states, never what the software concludes about
+  a person. Red run proven — reverting `imports/services.py` alone fails the two tests that assert
+  no household, through the service and through the review admin view.
+  Cost if wrong: a real family whose form names no spouse, no child and no wedding date is encoded
+  with the household left for the Secretariat to add by hand in the admin, which is one screen.
+
+Ruling: R34 — `remove_empty_households` (with `--dry-run`) cleans up the households the bug already
+  wrote. Its criteria — exactly one member, that member HEAD, no `date_of_marriage` — do NOT single
+  out the bug's output, and this was verified by execution rather than assumed: the FIXED importer
+  still produces exactly that shape for a form naming a spouse who is not in the register yet, and
+  the command deletes it. Nothing stored on the household distinguishes the two cases, because an
+  unmatched spouse's name is never written anywhere.
+  Ruled AGAINST three alternatives. Narrowing the importer to drop the bare-spouse-name trigger:
+  rejected, it is one of the four triggers the church asked for. Inferring intent from the lone
+  member's `civil_status`: rejected, that is the software guessing about a person, which this
+  design refuses everywhere else. Silently accepting the overlap: rejected, the command's own help
+  would then be claiming a narrower scope than it has, and a volunteer tidying up six months from
+  now would quietly undo correct behaviour with no way to know.
+  Instead: a `--created-before YYYY-MM-DD` filter on `created_at` so a re-run can be scoped to
+  households predating the fix, the creation date printed on every dry-run line so the operator can
+  see which are which, and the overlap stated plainly in the command's help text. The boundary is
+  local midnight (TIME_ZONE is Asia/Manila), which spares households created on the cutoff date —
+  the safe direction, and the help says so.
+  The lone member's `home_address` is backfilled from the household's before deletion if their own
+  is blank, so no address is lost. No `PurgeRecord` equivalent is written and none is needed: unlike
+  the retention purge this destroys no personal data — the address moves rather than disappearing
+  and the Person is untouched — so there is nothing for RA 10173 to want evidence of.
+  Cost if wrong: a household that should have been kept is deleted; the person survives with their
+  address, and the household is one admin screen to recreate. Re-running the command is safe and
+  proven idempotent.
+
+Ruling: R35 — found while checking R33's edges, fixed in the same pass: when a row's spouse was
+  matched to someone who already had a household, that household was reused (correctly, CRITICAL 1)
+  and this row's `date_of_marriage` was dropped on the floor. Both halves of a married couple fill
+  in their own form and only one of them may have written the wedding date down, so the datum R33
+  exists to protect was being lost on the one path where a household already existed.
+  `_reconcile_marriage_date` now fills the household's date when it has none, and reports it to the
+  reviewer as a notice. It never overwrites one: two forms disagreeing about a wedding date is a
+  question for the reviewer holding both sheets of paper, not something to settle by whichever row
+  happened to be approved second, so the stored date stands and the disagreement is reported.
+  Note the review form keeps every date as free text (`imports/forms.py`, so an unreadable scrawl
+  can still be staged and corrected), which means the incoming value is a string and the stored one
+  a `date`; comparing them raw reported a disagreement between two identical dates. Normalised
+  through `DateField().to_python` first, with its own test — red run proven by disabling only the
+  normalisation. Cost if wrong: a household carries the first-approved form's wedding date and a
+  notice tells the reviewer the second form disagreed.
+
+Residual (reported, not fixed): a reused household keeps its original `address` and `name`; a second
+  form giving a different address for the same household is neither applied nor reported, the way a
+  conflicting marriage date now is. Left alone because an address genuinely changes over time and
+  the newer form is not reliably the newer truth — but it is the same shape of silent drop R35 just
+  closed, and worth a decision if the Secretariat ever reports a stale household address.

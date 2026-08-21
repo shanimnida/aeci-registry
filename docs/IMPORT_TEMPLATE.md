@@ -139,6 +139,20 @@ months later. When a match is uncertain — the same name with a different or mi
 or more than one candidate — AEGIS refuses to guess and asks you to correct the entry instead of
 silently creating a duplicate or silently linking the wrong person.
 
+AEGIS only creates a household when the form actually describes one — a spouse named, a spouse
+matched to someone already in the register, at least one child listed, or a date of marriage.
+A member who lists none of those is recorded as a person and nothing else; they do not get a
+"{Surname} Family" household holding only themselves. Their home address stays on their own
+record either way, so nothing is lost. If they turn out to have a family the form didn't mention,
+the Secretariat adds the household in the admin.
+
+Because the date of marriage belongs to the household rather than to a person, AEGIS carries it
+across when it links two forms together: if the husband's form was approved first with no wedding
+date and the wife's form has one, approving hers records it on the household they now share, and
+says so on the approval result. If the two forms give *different* dates, AEGIS keeps the one
+already recorded and tells you they disagree — you have both sheets of paper in front of you and
+it does not.
+
 AEGIS re-checks the church's own rules on approval — one chairperson per committee, valid dates.
 A row the AI faithfully transcribed can still be refused, because the paper itself was wrong (two
 people down as chairperson of the same committee at once, or a birth date that cannot be real).

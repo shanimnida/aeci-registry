@@ -24,10 +24,24 @@ looking for an existing match -- a child by name *and* date of birth, a
 spouse by the free-text `spouse_name` -- before creating anything, and by
 reusing whichever household the matched person already belongs to. See
 _find_child_match, _find_spouse_match, and the "linked" notices below.
+
+BUG (2026-08-22, empty households): a Household used to be created
+unconditionally for every approved row, even a single member with no
+spouse, no children and no marriage date -- one person is not a family,
+and importing thirty solo forms manufactured thirty households, almost
+all of them containing exactly one person. A household is now only
+created when the row actually names one: a spouse (named or matched),
+at least one child, or a date of marriage (Household.date_of_marriage
+has no home on Person, so a marriage date with no linked spouse form
+still needs somewhere to live). See _ensure_household, which creates the
+household -- and the HEAD membership, and the matched spouse's membership
+-- at the first point something in this row actually needs one, instead
+of up front. people/management/commands/remove_empty_households.py
+cleans up the households this bug already wrote to production.
 """
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -126,6 +140,94 @@ def _find_spouse_match(spouse_name: str, household_surname: str, exclude_pk):
     return None, False
 
 
+def _reconcile_marriage_date(household, date_of_marriage, user, notices):
+    """Carry this row's date of marriage onto a household that already
+    existed (BUG, 2026-08-22: empty households).
+
+    `date_of_marriage` lives on Household and has no home on Person, so a
+    row whose spouse was matched to someone who already has a household --
+    the CRITICAL 1 reuse path above -- used to drop the date on the floor
+    whenever the spouse's own form had not carried one. Both halves of a
+    married couple fill in their own paper form, and only one of them may
+    have written the date down.
+
+    Fills the gap only when the household has no date at all. It never
+    overwrites one: two forms disagreeing about a wedding date is a
+    question for the reviewer holding both sheets of paper, not something
+    to resolve by whichever row happened to be approved second, so the
+    disagreement is reported and the stored date left alone.
+    """
+    if date_of_marriage is None:
+        return
+    # The review form hands every date over as free text (imports/forms.py
+    # keeps them CharFields so an unreadable scrawl can still be staged and
+    # corrected), so normalise before comparing -- "2012-04-04" and
+    # date(2012, 4, 4) are the same wedding, and comparing the two raw
+    # would report a disagreement that is not there. A string that is not a
+    # date at all raises ValidationError here, which the review screen
+    # already knows how to show against this row.
+    date_of_marriage = models.DateField().to_python(date_of_marriage)
+    if household.date_of_marriage is None:
+        household.date_of_marriage = date_of_marriage
+        household.updated_by = user
+        household.full_clean()
+        household.save()
+        notices.append(
+            f"Recorded this form's date of marriage ({date_of_marriage}) on the existing "
+            f"household ({household}), which had none on file."
+        )
+    elif household.date_of_marriage != date_of_marriage:
+        notices.append(
+            f"This form gives the date of marriage as {date_of_marriage}, but household "
+            f"({household}) already records {household.date_of_marriage}. Kept the recorded "
+            "date -- check both paper forms and correct the household by hand if needed."
+        )
+
+
+def _ensure_household(household, person, spouse_match, cleaned, user, notices):
+    """Return `household`, creating it first if it is still None (BUG,
+    2026-08-22: empty households). Called at each point in
+    build_person_from_import where something -- a named spouse, a date of
+    marriage, a real child entry -- first actually needs a household to
+    exist, rather than one being made up front and possibly left holding
+    nobody but `person`. Idempotent: once a household exists, later calls
+    just hand it back unchanged, so callers can call this unconditionally
+    at every point of potential need without worrying about a second one
+    getting created.
+
+    The newly created household always gets `person` as its HEAD, and (if
+    `spouse_match` is set -- an existing Person matched by name who is not
+    already in a household of their own; see the caller's earlier check)
+    `spouse_match` as its SPOUSE, with a notice reported to the reviewer.
+    """
+    if household is not None:
+        return household
+
+    household = Household(
+        name=f"{person.last_name} Family",
+        address=cleaned.get("home_address") or "",
+        date_of_marriage=_blank_to_none(cleaned.get("date_of_marriage")),
+        created_by=user,
+        updated_by=user,
+    )
+    household.full_clean()
+    household.save()
+
+    head = HouseholdMember(household=household, person=person, role=HouseholdRole.HEAD)
+    head.full_clean()
+    head.save()
+
+    if spouse_match is not None:
+        # Matched by name, but not yet in any household of their own (e.g.
+        # added to the register outside this workflow).
+        member = HouseholdMember(household=household, person=spouse_match, role=HouseholdRole.SPOUSE)
+        member.full_clean()
+        member.save()
+        notices.append(f"Linked to existing person {spouse_match.full_name} as spouse.")
+
+    return household
+
+
 def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple[Person, list[str]]:
     """Create (or link) the Person, Household, child Persons and
     CommitteeMemberships for one approved import row.
@@ -193,6 +295,8 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
                 )
                 spouse_match = None
 
+        date_of_marriage = _blank_to_none(cleaned.get("date_of_marriage"))
+
         household = None
         if spouse_match is not None:
             spouse_membership = (
@@ -211,35 +315,29 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
                     f"Linked to {spouse_match.full_name}'s existing household "
                     f"({household}) as spouse, rather than starting a new one."
                 )
+                _reconcile_marriage_date(household, date_of_marriage, user, notices)
 
-        if household is None:
-            household = Household(
-                name=f"{person.last_name} Family",
-                address=cleaned.get("home_address") or "",
-                date_of_marriage=_blank_to_none(cleaned.get("date_of_marriage")),
-                created_by=user,
-                updated_by=user,
-            )
-            household.full_clean()
-            household.save()
-
-            head = HouseholdMember(household=household, person=person, role=HouseholdRole.HEAD)
-            head.full_clean()
-            head.save()
-
-            if spouse_match is not None:
-                # Matched by name, but not yet in any household of their own
-                # (e.g. added to the register outside this workflow).
-                member = HouseholdMember(household=household, person=spouse_match, role=HouseholdRole.SPOUSE)
-                member.full_clean()
-                member.save()
-                notices.append(f"Linked to existing person {spouse_match.full_name} as spouse.")
+        # A household is worth creating even before any child is seen when
+        # the row itself names a family on its own: a spouse (named, even if
+        # not matched to anyone -- see _find_spouse_match's ambiguous case),
+        # or a date of marriage, which has nowhere to live but
+        # Household.date_of_marriage (BUG, 2026-08-22: empty households).
+        # `spouse_match` can only be set when `spouse_name` is (see
+        # _find_spouse_match), so this also covers the matched-spouse case.
+        if household is None and (spouse_name or date_of_marriage):
+            household = _ensure_household(household, person, spouse_match, cleaned, user, notices)
 
         # -- children (CRITICAL 1) -------------------------------------------
         for child in children:
             full_name = (child.get("full_name") or "").strip()
             if not full_name:
                 continue
+            # A real child entry is itself reason enough for a household,
+            # even for a row with no spouse and no marriage date on file
+            # (BUG, 2026-08-22: empty households) -- created here, the first
+            # point a household is actually needed, if nothing earlier
+            # already made one.
+            household = _ensure_household(household, person, spouse_match, cleaned, user, notices)
             first_name, last_name = _split_child_name(full_name, person.last_name)
             date_of_birth = _blank_to_none(child.get("date_of_birth"))
 
