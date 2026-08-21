@@ -121,10 +121,16 @@ UNFOLD = {
                 "separator": True,
                 "items": [
                     {
+                        # Points at the overview (a card per committee), not
+                        # the flat changelist -- that is the landing view
+                        # now, per the redesign in committees/admin.py's
+                        # overview_view. The changelist itself is unchanged
+                        # and stays one click away from there for adding and
+                        # editing.
                         "title": _("Committee memberships"),
                         "icon": "badge",
                         "link": reverse_lazy(
-                            "admin:committees_committeemembership_changelist"
+                            "admin:committees_committeemembership_overview"
                         ),
                         "permission": lambda request: request.user.has_perm(
                             "committees.view_committeemembership"

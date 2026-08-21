@@ -1,0 +1,103 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% comment %}
+The landing screen for committee memberships: one card per committee
+instead of a flat table of rows. See
+committees.admin.CommitteeMembershipAdmin.overview_view. The ordinary
+changelist stays one click away ("View as a table") for adding and editing
+-- this page only replaces how the data is first read.
+{% endcomment %}
+
+{% block content %}
+<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div>
+        <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight mb-1">
+            Committee overview
+        </div>
+        <p class="text-sm text-base-500 dark:text-base-400">
+            {% if chairperson_only %}
+                The committee{{ cards|length|pluralize }} you chair or co-chair, at a glance.
+            {% else %}
+                Every committee, at a glance. Open one for its full roster.
+            {% endif %}
+        </p>
+    </div>
+    <a href="{% url 'admin:committees_committeemembership_changelist' %}"
+       class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-4 py-2 text-[14px] border border-base-200 bg-white text-base-700 hover:bg-base-50 dark:bg-base-900 dark:border-base-700 dark:text-base-300 dark:hover:bg-base-800/60">
+        <span class="material-symbols-outlined md-18" aria-hidden="true">table_rows</span>
+        {% translate "View as a table" %}
+    </a>
+</div>
+
+{% if cards %}
+<div class="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+    {% for card in cards %}
+    <a href="{% url 'admin:committees_committeemembership_overview_detail' card.committee.pk %}"
+       class="group flex flex-col rounded-default border bg-white dark:bg-base-900 shadow-xs hover:shadow-sm transition-shadow p-4
+              {% if card.is_empty %}border-amber-300 dark:border-amber-800{% else %}border-base-200 dark:border-base-800{% endif %}">
+        <div class="flex items-start justify-between gap-2 mb-1">
+            <div class="text-lg font-semibold text-font-important-light dark:text-font-important-dark group-hover:text-primary-600 dark:group-hover:text-primary-400">
+                {{ card.committee.name }}
+            </div>
+            <div class="shrink-0 inline-flex items-center gap-1 text-sm font-medium text-base-600 dark:text-base-300 bg-base-50 dark:bg-base-800 rounded-default px-2 py-0.5"
+                 title="{{ card.count }} on the roster">
+                <span class="material-symbols-outlined md-16" aria-hidden="true">group</span>
+                {{ card.count }}
+            </div>
+        </div>
+
+        {% if not card.committee.is_self_selectable %}
+        <div class="text-xs text-base-400 dark:text-base-500 mb-2">Board-appointed committee</div>
+        {% endif %}
+
+        {% if card.is_empty %}
+        <div class="mt-2 flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900 rounded-default px-3 py-2">
+            <span class="material-symbols-outlined md-18" aria-hidden="true">warning</span>
+            Nobody currently assigned
+        </div>
+        {% else %}
+        <div class="flex flex-col gap-2 text-sm mt-2">
+            <div class="flex items-center gap-2 {% if card.missing_chair %}text-amber-800 dark:text-amber-300{% else %}text-base-700 dark:text-base-300{% endif %}">
+                {% if card.missing_chair %}
+                    <span class="material-symbols-outlined md-18 shrink-0" aria-hidden="true">warning</span>
+                    <span>No chairperson assigned</span>
+                {% else %}
+                    <span class="material-symbols-outlined md-18 shrink-0 text-base-400 dark:text-base-500" aria-hidden="true">person</span>
+                    <span><span class="text-base-400 dark:text-base-500">Chair:</span> {{ card.chair_name }}</span>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center gap-2 text-base-700 dark:text-base-300">
+                <span class="material-symbols-outlined md-18 shrink-0 text-base-400 dark:text-base-500" aria-hidden="true">person</span>
+                {% if card.co_chair_names %}
+                    <span><span class="text-base-400 dark:text-base-500">Co-Chair:</span> {{ card.co_chair_names|join:", " }}</span>
+                {% else %}
+                    <span class="text-base-400 dark:text-base-500">No co-chair</span>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center gap-2 {% if card.missing_oversight %}text-amber-800 dark:text-amber-300{% else %}text-base-700 dark:text-base-300{% endif %}">
+                {% if card.missing_oversight %}
+                    <span class="material-symbols-outlined md-18 shrink-0" aria-hidden="true">warning</span>
+                    <span>No Board Oversight assigned</span>
+                {% else %}
+                    <span class="material-symbols-outlined md-18 shrink-0 text-base-400 dark:text-base-500" aria-hidden="true">shield_person</span>
+                    <span><span class="text-base-400 dark:text-base-500">Oversight:</span> {{ card.oversight_names|join:", " }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-base-50 dark:bg-base-800/40 border border-base-200 dark:border-base-800 rounded-default p-4 text-sm text-base-500 dark:text-base-400">
+    {% if chairperson_only %}
+        You are not recorded as chairing or co-chairing any committee yet.
+    {% else %}
+        No committees are recorded yet.
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
