@@ -40,6 +40,19 @@ INSTALLED_APPS = [
 # sidebar, colour, typography. None of this touches permissions — every
 # sidebar item's visibility is gated by the same request.user.has_perm(...)
 # checks the underlying ModelAdmin already enforces, not a parallel ruleset.
+def _celebrations_permission(request) -> bool:
+    """Sidebar visibility for the Celebrations screen.
+
+    Imported lazily rather than at module scope: people.celebrations reaches
+    the model layer, and settings.py is read long before the app registry is
+    populated. Delegating to the view's own gate keeps the link and the
+    403 from ever disagreeing.
+    """
+    from people.celebrations import may_view_celebrations
+
+    return may_view_celebrations(request.user)
+
+
 UNFOLD = {
     "SITE_TITLE": "AEGIS",
     "SITE_HEADER": "AEGIS",
@@ -66,6 +79,10 @@ UNFOLD = {
             "950": "#172554",
         },
     },
+    # Puts the week's birthdays and anniversaries above the app list on the
+    # landing page. Gated inside the callback, not here -- see
+    # people/dashboard.py.
+    "DASHBOARD_CALLBACK": "people.dashboard.dashboard_callback",
     "SIDEBAR": {
         "show_search": True,
         "show_all_applications": False,
@@ -89,6 +106,17 @@ UNFOLD = {
                         "permission": lambda request: request.user.has_perm(
                             "people.view_household"
                         ),
+                    },
+                    {
+                        # Spec 7.7 grants this report to the Sunshine
+                        # chairperson and withholds it from the Board and
+                        # Treasurer, which no Person permission expresses --
+                        # so the link uses the view's own gate rather than a
+                        # has_perm check, and the two cannot drift apart.
+                        "title": _("Celebrations"),
+                        "icon": "cake",
+                        "link": reverse_lazy("admin:people_person_celebrations"),
+                        "permission": lambda request: _celebrations_permission(request),
                     },
                 ],
             },
@@ -232,7 +260,11 @@ ROOT_URLCONF = "aeci.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # Project templates take priority over every app's, which is how
+        # aeci/templates/admin/index.html shadows Unfold's own index to add
+        # the celebrations panel. Unfold still wins over django.contrib.admin
+        # via INSTALLED_APPS order; this only sits above both.
+        "DIRS": [BASE_DIR / "aeci" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

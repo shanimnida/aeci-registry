@@ -3,7 +3,7 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.db.models.constants import LOOKUP_SEP
 from django.shortcuts import render
-from django.urls import path
+from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.text import capfirst
 from simple_history.admin import SimpleHistoryAdmin
@@ -11,9 +11,23 @@ from unfold.admin import ModelAdmin, TabularInline
 
 from committees.models import Committee, CommitteeMembership, CommitteeRole
 from core.groups import is_chairperson_only, is_ict
+from people.celebrations import (
+    DEFAULT_WINDOW_DAYS,
+    combined_anniversary_greeting,
+    combined_birthday_greeting,
+    may_view_celebrations,
+    missing_birthdate_count,
+    upcoming_anniversaries,
+    upcoming_birthdays,
+)
 from core.numbering import next_member_no, reconcile_member_sequence
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
+
+# A year is the widest window that still means "upcoming"; past that the
+# page is a list of everyone, which is what the changelist is for.
+MAX_WINDOW_DAYS = 366
+CELEBRATION_WINDOW_CHOICES = (7, 30, 60, 90)
 
 # Spec D12: enough to run a committee, and nothing more.
 CHAIRPERSON_FIELDS = ("first_name", "last_name", "nickname", "mobile_number", "email")
@@ -314,8 +328,77 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
                 self.admin_site.admin_view(self.missing_data_view),
                 name="people_person_missing_data",
             ),
+            path(
+                "celebrations/",
+                self.admin_site.admin_view(self.celebrations_view),
+                name="people_person_celebrations",
+            ),
         ]
         return custom + super().get_urls()
+
+    # -- celebrations (spec 7.1) ---------------------------------------
+
+    def celebrations_view(self, request):
+        """Upcoming birthdays and wedding anniversaries.
+
+        The Church Secretary's original reason for asking for AEGIS. Access
+        is `may_view_celebrations`, not this admin's own view permission:
+        spec 7.7 grants this one report to the Sunshine chairperson (whose
+        committee does greetings and benevolence) and withholds it from the
+        Board and Treasurer, neither of which the ordinary Person
+        permissions express. The list itself carries no field a chairperson
+        may not see -- a name a person goes by, and a month and day.
+
+        The AccessLog entry is written after the gate, never before, so a
+        refused user leaves no row claiming they read the congregation's
+        dates (R15).
+        """
+        if not may_view_celebrations(request.user):
+            raise PermissionDenied
+
+        days = self._celebration_window(request)
+        today = timezone.localdate()
+        birthdays = upcoming_birthdays(start=today, days=days)
+        anniversaries = upcoming_anniversaries(start=today, days=days)
+
+        AccessLog.record(
+            user=request.user,
+            report=f"celebrations — next {days} days"[:120],
+            ip=request.META.get("REMOTE_ADDR"),
+        )
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Celebrations",
+            "opts": self.model._meta,
+            "days": days,
+            "window_choices": CELEBRATION_WINDOW_CHOICES,
+            "birthdays": birthdays,
+            "anniversaries": anniversaries,
+            "birthday_greeting": combined_birthday_greeting(birthdays),
+            "anniversary_greeting": combined_anniversary_greeting(anniversaries),
+            "missing_birthdates": missing_birthdate_count(),
+            "missing_data_url": reverse("admin:people_person_missing_data"),
+            "printed_at": timezone.now(),
+        }
+        return render(request, "admin/people/person/celebrations.html", context)
+
+    @staticmethod
+    def _celebration_window(request) -> int:
+        """`?days=` from the query string, clamped.
+
+        A hand-edited URL is not an error worth a 500 on a page the
+        Secretariat opens every Sunday: anything unreadable, negative or
+        absurd falls back to the default rather than failing.
+        """
+        raw = request.GET.get("days")
+        try:
+            days = int(raw)
+        except (TypeError, ValueError):
+            return DEFAULT_WINDOW_DAYS
+        if days < 1 or days > MAX_WINDOW_DAYS:
+            return DEFAULT_WINDOW_DAYS
+        return days
 
     def missing_data_view(self, request):
         """The paper chase list: everyone with a gap, and exactly what to ask for.

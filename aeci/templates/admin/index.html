@@ -1,0 +1,31 @@
+{% extends 'admin/base.html' %}
+
+{% load i18n %}
+
+{% comment %}
+Shadows unfold/templates/admin/index.html (Unfold 0.104.1) to put the
+week's celebrations above the app list. Unfold's own content block is the
+two helper includes reproduced below -- extending it directly is not
+possible from a template of the same name, and those helpers are Unfold's
+public template API. If Unfold's index grows a third include on upgrade,
+this file needs the same one; tests/people/test_celebrations_dashboard.py
+asserts the app list still renders, which is what would catch it.
+{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+    {% include "admin/people/person/_celebrations_panel.html" %}
+
+    <div class="flex flex-col lg:flex-row lg:gap-8">
+        <div class="grow">
+            {% include "unfold/helpers/app_list_default.html" %}
+        </div>
+
+        {% include "unfold/helpers/history.html" %}
+    </div>
+{% endblock %}

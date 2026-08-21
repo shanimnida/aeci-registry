@@ -716,3 +716,73 @@ Residual (reported, not fixed): a reused household keeps its original `address` 
   conflicting marriage date now is. Left alone because an address genuinely changes over time and
   the newer form is not reliably the newer truth — but it is the same shape of silent drop R35 just
   closed, and worth a decision if the Secretariat ever reports a stale household address.
+
+=== CELEBRATIONS: THE SECRETARY'S ORIGINAL REQUEST (453 tests) ===
+Spec 7.1, built at the user's request 2026-08-22. Upcoming birthdays and wedding anniversaries as
+an admin screen plus a seven-day panel on the landing page. Bounded work: no models, no migration.
+
+Ruling: R36 — named **Celebrations**, not "Events" as first asked. "Event" is already taken twice
+  inside AECI: the Events Committee is one of the twelve on the profiling form, and Phase B's EARF
+  is the Event/Activity Request Form, where an event is an activity with a budget and an approval
+  chain. Spec 7.1's own word collides with neither. Put to the user with the collision explained
+  rather than renamed silently. Cost if wrong: none; it is a display string.
+
+Ruling: R37 — the window is a rolling 30 days, not a calendar month. On the 29th a calendar month
+  shows almost nothing while three people have birthdays that week. `?days=` widens it, clamped to
+  1..366 and falling back to the default on anything unreadable, because a hand-edited URL is not
+  worth a 500 on a page the Secretariat opens every Sunday.
+  29 February is greeted on 1 March in a common year rather than dropped, and the label says
+  1 March, since that is the day the church would actually greet them. Both the year-end rollover
+  and the leap-year case are named requirements in spec 9 and are tested in both directions.
+
+Ruling: R38 — an anniversary is dropped when either spouse is excluded, but the exclusion is
+  scoped to the household's HEAD and SPOUSE rows rather than to everyone under the roof. Greeting a
+  widow on her wedding anniversary is precisely the error spec 7.1 calls embarrassing once and
+  preventable permanently; a teenager opting out of their own greetings erasing their parents'
+  anniversary is a different thing and would be wrong. A household with a HEAD and no SPOUSE still
+  counts — that is R33's case, where the marriage date came from the paper and the spouse never
+  submitted a form of their own.
+
+Ruling: R39 — no birth year and no ordinal anywhere, so no "25th anniversary" either. D17 withholds
+  the year to keep an age from people who have no need for it, and a wedding ordinal discloses the
+  year just as directly. Recorded as a deliberate cost: ordinals are what makes an anniversary
+  greeting land, and the church may well want milestones (silver, golden, an 18th debut) later.
+  That is one conversation and one line, not something to grant quietly here. A test asserts the
+  birth year never reaches the rendered page.
+
+Ruling: R40 — access is `may_view_celebrations`, not this admin's ordinary view permission.
+  Spec 7.7 grants this one report to the Sunshine chairperson — greetings and benevolence are that
+  committee's actual job — and withholds it from the Board and Treasurer, and no Person permission
+  expresses either fact. Note this is deliberately wider than D12 for that one person: Sunshine's
+  lead sees names and dates for the whole congregation, not just their own roster. That is the
+  spec's call and it is tested as intended rather than quietly narrowed. Every other chairperson is
+  refused, including a former Sunshine chairperson whose membership has ended. The sidebar link
+  calls the same predicate, so the link and the 403 cannot drift apart.
+
+Ruling: R41 — the dashboard panel deliberately writes NO AccessLog entry, unlike the full report.
+  The callback runs on every load of the admin index, so logging it would put a row in the audit
+  log each time anyone opens AEGIS at all. Spec 7.6's rule against one entry per row exists because
+  "logging every row would bury the signal the log exists to provide", and an entry per index load
+  buries it the same way. The panel shows the least sensitive data in the system — a name someone
+  goes by and a day and month D17 already judged safe — and the full page, where anyone actually
+  works from this data, is logged. The panel reuses the same access gate, so a Treasurer sees
+  nothing; without that the 403 on the full page would be decoration, and there is a test per role
+  proving it. Cost if wrong: someone reading only the dashboard panel leaves no audit trail.
+
+Ruling: R42 — `aeci/templates/admin/index.html` shadows Unfold 0.104.1's own index to place the
+  panel above the app list, reproducing its two helper includes because a template cannot extend
+  one of the same name. That is an upgrade hazard: if Unfold's index grows a third include, this
+  file silently loses it. Guarded by a test asserting the app list still renders, rather than by a
+  comment nobody would read at upgrade time.
+  Found and fixed while building it: Django's `{# #}` comment is single-line ONLY. A multi-line one
+  is not recognised as a comment token at all — it either renders as literal text on the page (both
+  of these templates did, verified live) or, if it contains a tag, is parsed as real template
+  syntax (`'block' tag with name 'content' appears more than once`). Converted to
+  `{% comment %}` blocks, with a test asserting no `{#` survives into either rendered page.
+
+Residual (reported, not fixed): the weekly email digest spec 7.1 also describes is NOT built. It
+  needs an email backend AECI has not configured and a schedule, and DEPLOYMENT.md 10 is honest
+  that free-tier hosting has no usable cron — it would ride the same GitHub Actions workflow that
+  still needs creating for backups. Deliberately deferred as infrastructure work rather than
+  celebrations work, so nothing today tells the Secretary the list is worth looking at; they have
+  to remember to open it, or notice the dashboard panel.

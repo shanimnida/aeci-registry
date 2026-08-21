@@ -1,0 +1,151 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        /* Same reasoning as the missing-data chase list: on screen this
+           matches the rest of AEGIS, but the Sunshine Committee does home
+           and hospital visits and will carry this on paper. On paper the
+           app chrome does not belong, dark backgrounds waste toner, and a
+           person's entry must never straddle a page break. */
+        @media print {
+            .no-print { display: none !important; }
+            * {
+                background: #fff !important;
+                color: #000 !important;
+                box-shadow: none !important;
+                text-shadow: none !important;
+            }
+            body { margin: 0; }
+            .celebration-entry {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border-color: #999 !important;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block header %}<div class="no-print">{{ block.super }}</div>{% endblock %}
+{% block breadcrumbs %}<div class="no-print">{{ block.super }}</div>{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl">
+
+    <h1 class="text-2xl font-semibold mb-1">Celebrations</h1>
+    <p class="text-sm text-base-500 dark:text-base-400 mb-6">
+        Birthdays and wedding anniversaries in the next {{ days }} days.
+        Dates show the day and month only.
+    </p>
+
+    <div class="no-print mb-6 flex flex-wrap gap-2 items-center text-sm">
+        <span class="text-base-500 dark:text-base-400">Show:</span>
+        {% for choice in window_choices %}
+            <a href="?days={{ choice }}"
+               class="px-3 py-1 rounded border {% if choice == days %}bg-primary-600 text-white border-primary-600{% else %}border-base-200 dark:border-base-700{% endif %}">
+                {{ choice }} days
+            </a>
+        {% endfor %}
+        <button type="button" onclick="window.print()"
+                class="ml-auto px-3 py-1 rounded border border-base-200 dark:border-base-700">
+            Print
+        </button>
+    </div>
+
+    {# -- birthdays -------------------------------------------------- #}
+    <section class="mb-10">
+        <h2 class="text-lg font-semibold mb-3">Birthdays</h2>
+
+        {% if birthdays %}
+            {% if birthday_greeting %}
+                <div class="no-print mb-4 p-3 rounded bg-base-100 dark:bg-base-800 text-sm">
+                    <div class="mb-2 text-base-500 dark:text-base-400">
+                        Ready to post — one message for everyone above:
+                    </div>
+                    <div id="birthday-greeting" class="mb-2">{{ birthday_greeting }}</div>
+                    <button type="button" class="px-3 py-1 rounded border border-base-200 dark:border-base-700"
+                            data-copy-target="birthday-greeting">Copy</button>
+                </div>
+            {% endif %}
+
+            <ul>
+                {% for entry in birthdays %}
+                    <li class="celebration-entry flex justify-between gap-4 py-2 border-b border-base-200 dark:border-base-700">
+                        <span>
+                            <strong>{{ entry.names }}</strong>
+                            <span class="text-base-500 dark:text-base-400">— {{ entry.subtitle }}</span>
+                        </span>
+                        <span class="whitespace-nowrap">{{ entry.day_label }}</span>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-base-500 dark:text-base-400">No birthdays in this window.</p>
+        {% endif %}
+    </section>
+
+    {# -- anniversaries ---------------------------------------------- #}
+    <section class="mb-10">
+        <h2 class="text-lg font-semibold mb-3">Wedding anniversaries</h2>
+
+        {% if anniversaries %}
+            {% if anniversary_greeting %}
+                <div class="no-print mb-4 p-3 rounded bg-base-100 dark:bg-base-800 text-sm">
+                    <div class="mb-2 text-base-500 dark:text-base-400">
+                        Ready to post — one message for everyone above:
+                    </div>
+                    <div id="anniversary-greeting" class="mb-2">{{ anniversary_greeting }}</div>
+                    <button type="button" class="px-3 py-1 rounded border border-base-200 dark:border-base-700"
+                            data-copy-target="anniversary-greeting">Copy</button>
+                </div>
+            {% endif %}
+
+            <ul>
+                {% for entry in anniversaries %}
+                    <li class="celebration-entry flex justify-between gap-4 py-2 border-b border-base-200 dark:border-base-700">
+                        <span>
+                            <strong>{{ entry.names }}</strong>
+                            <span class="text-base-500 dark:text-base-400">— {{ entry.subtitle }}</span>
+                        </span>
+                        <span class="whitespace-nowrap">{{ entry.day_label }}</span>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-base-500 dark:text-base-400">No anniversaries in this window.</p>
+        {% endif %}
+    </section>
+
+    {% comment %}
+    Spec 7.1: the people with no birthdate on file cannot appear above at
+    all, which is what makes this page a standing argument for working the
+    follow-up queue.
+    {% endcomment %}
+    {% if missing_birthdates %}
+        <p class="text-sm text-base-500 dark:text-base-400 border-t border-base-200 dark:border-base-700 pt-4">
+            <strong>{{ missing_birthdates }}</strong>
+            {{ missing_birthdates|pluralize:"person has,people have" }}
+            no birthdate on file and cannot appear here.
+            <a class="no-print underline" href="{{ missing_data_url }}">Chase list</a>
+        </p>
+    {% endif %}
+
+</div>
+
+<script>
+    // Progressive enhancement only -- the message is already on the page
+    // and selectable if this never runs.
+    document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            var source = document.getElementById(button.dataset.copyTarget);
+            if (!source || !navigator.clipboard) { return; }
+            navigator.clipboard.writeText(source.textContent.trim()).then(function () {
+                var original = button.textContent;
+                button.textContent = "Copied";
+                setTimeout(function () { button.textContent = original; }, 1500);
+            });
+        });
+    });
+</script>
+{% endblock %}

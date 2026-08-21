@@ -1,0 +1,46 @@
+{% comment %}
+The week's greetings on the admin landing page. Context comes from
+people.dashboard.dashboard_callback, which leaves celebrations_visible
+false for anyone spec 7.7 withholds this report from -- so this whole
+panel disappears rather than rendering empty for them.
+{% endcomment %}
+{% if celebrations_visible %}
+    {% if celebrations_birthdays or celebrations_anniversaries %}
+        <section class="mb-8 p-4 rounded border border-base-200 dark:border-base-700">
+            <div class="flex items-baseline justify-between mb-3 gap-4">
+                <h2 class="text-lg font-semibold">This week</h2>
+                <a class="text-sm underline" href="{% url 'admin:people_person_celebrations' %}">
+                    All celebrations
+                </a>
+            </div>
+
+            {% if celebrations_birthdays %}
+                <div class="mb-3">
+                    <div class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Birthdays</div>
+                    <ul class="text-sm">
+                        {% for entry in celebrations_birthdays %}
+                            <li class="flex justify-between gap-4 py-1">
+                                <span>{{ entry.names }} <span class="text-base-500 dark:text-base-400">— {{ entry.subtitle }}</span></span>
+                                <span class="whitespace-nowrap">{{ entry.day_label }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            {% if celebrations_anniversaries %}
+                <div>
+                    <div class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Anniversaries</div>
+                    <ul class="text-sm">
+                        {% for entry in celebrations_anniversaries %}
+                            <li class="flex justify-between gap-4 py-1">
+                                <span>{{ entry.names }} <span class="text-base-500 dark:text-base-400">— {{ entry.subtitle }}</span></span>
+                                <span class="whitespace-nowrap">{{ entry.day_label }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </section>
+    {% endif %}
+{% endif %}
