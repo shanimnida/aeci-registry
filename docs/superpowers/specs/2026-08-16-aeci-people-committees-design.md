@@ -333,13 +333,22 @@ line, so anyone who ticked two boxes and also held a secretary post would trip
 the overflow warning every time they were recorded. Unlike the two offices it
 carries no uniqueness rule — twelve secretaries all sit on one Secretariat.
 
-**AEGIS prompts; it does not enrol.** Recording someone as a committee
-secretary shows a message naming the Secretariat seat and linking to the form
-that records it, in the same shape as the duplicate-person warning and the
-committee-cap warning. It never creates the membership itself, because an
-auto-created row would also have to be auto-*ended* when the secretary's term
-finished, and that is the software quietly editing someone's service history
-(D8).
+**AEGIS records the seat automatically, in both directions.** The Board's rule
+is that every committee secretary *is* a member of the Secretariat committee —
+not that they may be — so this is not a discretion the church exercises person
+by person, and a prompt somebody ignores would leave the roster contradicting
+the church's own rule. `CommitteeMembership.save()` therefore creates the
+`EX_OFFICIO` seat when a secretary post begins and ends it when the last one
+finishes, dated the day that post ended rather than today, so the service
+record reads truthfully. Two guards: someone holding a second secretary post
+keeps the seat, and a Secretariat membership they *volunteered* for
+(`role=MEMBER`) is never touched — losing a secretary post must not quietly
+cancel a committee they chose to serve on.
+
+**The Board's structure, for the record.** Each committee has at least three
+members. The Board appoints each committee's chairperson; each chairperson
+appoints their own vice and secretary; every committee secretary is a member of
+the Secretariat committee.
 
 **Two things called Secretariat.** The Secretariat *committee* — one of the
 twelve, tickable on the profiling form — and the Secretariat *permission group*

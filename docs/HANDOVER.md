@@ -890,3 +890,27 @@ change — the committee structure comes from the Board document of 5 July 2026.
 whatever the Board decides; it should not be the thing that decided it. Flagged to the user at the
 time of the request. data/officers.csv accepts role=SECRETARY with no change, so the ICT Committee
 can seed them once the Board has named them.
+
+Ruling: R51 — SUPERSEDES R49 on the church's correction. The Secretariat seat is now recorded
+  automatically by CommitteeMembership.save(), not prompted for. R49 chose a prompt on the
+  reasoning that an auto-created row would also have to be auto-ended, which is the software
+  editing service history. The church corrected the premise rather than the conclusion: the Board's
+  rule is that every committee secretary IS a member of the Secretariat committee, so there is no
+  per-person decision for a human to make, and a prompt somebody ignores leaves the roster
+  contradicting the church's own rule. Put in save() rather than the admin so it holds on every
+  write path — seed_officers, the shell, imports — not only the one screen.
+  Two guards keep the auto-ending honest: someone holding a SECOND secretary post keeps the seat,
+  and a Secretariat membership they VOLUNTEERED for (role=MEMBER) is never ended, because losing a
+  secretary post must not quietly cancel a committee they chose to serve on. The seat is dated the
+  day the last post ended, not today.
+  Cost if wrong: an EX_OFFICIO row appears and disappears without a human touching it. Mitigated by
+  simple-history on CommitteeMembership recording every one, and by the admin reporting what
+  happened on save.
+
+Correction to the record: R50's "governance change" note read as though ICT were inventing church
+  structure. It was not. The Board decided all of it — at least three members per committee, the
+  Board appoints the chairpersons, each chairperson appoints their own vice and secretary, and all
+  committee secretaries are members of the Secretariat committee. The note was only that the SPEC
+  FILE still described the old behaviour and needed updating to match. Recorded here so the
+  handover does not preserve the wrong impression. The "Secretariat means two things" half of R50
+  stands unchanged and is unrelated.

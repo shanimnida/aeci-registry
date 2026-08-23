@@ -203,48 +203,102 @@ def add_membership_via_admin(client, committee_code, person, role):
 
 
 @pytest.mark.django_db
-def test_recording_a_secretary_prompts_for_the_secretariat_seat(client, secretariat_user, person):
-    """AEGIS surfaces the rule; a human records the seat. It must not create
-    the membership itself -- an auto-created row would also have to be
-    auto-ended when the term finishes, which is the software quietly editing
-    someone's service history (D8)."""
-    client.force_login(secretariat_user)
+def test_recording_a_secretary_seats_them_on_secretariat_automatically(person):
+    """The Board's rule: every committee secretary IS a member of the
+    Secretariat committee. Not a discretion exercised person by person, so
+    AEGIS records it rather than asking."""
+    membership("youth", person, CommitteeRole.SECRETARY).save()
 
-    response = add_membership_via_admin(client, "youth", person, CommitteeRole.SECRETARY)
-    body = response.content.decode()
-
-    assert "also sit on the Secretariat committee" in body
-    assert "record that seat" in body
-    # Prompted, not created.
-    assert not CommitteeMembership.objects.filter(committee__code="secretariat").exists()
+    seat = CommitteeMembership.objects.active().get(
+        person=person, committee__code="secretariat"
+    )
+    assert seat.role == CommitteeRole.EX_OFFICIO
+    assert seat.date_joined == JOINED
 
 
 @pytest.mark.django_db
-def test_no_prompt_for_the_secretariats_own_secretary(client, secretariat_user, person):
-    client.force_login(secretariat_user)
+def test_the_seat_is_not_duplicated_on_a_second_save(person):
+    entry = membership("youth", person, CommitteeRole.SECRETARY)
+    entry.save()
+    entry.save()
 
-    response = add_membership_via_admin(client, "secretariat", person, CommitteeRole.SECRETARY)
-
-    assert "also sit on the Secretariat" not in response.content.decode()
+    assert (
+        CommitteeMembership.objects.filter(
+            person=person, committee__code="secretariat"
+        ).count()
+        == 1
+    )
 
 
 @pytest.mark.django_db
-def test_no_prompt_when_they_are_already_on_secretariat(client, secretariat_user, person):
+def test_ending_the_secretary_post_ends_the_seat_on_the_day_it_ended(person):
+    entry = membership("youth", person, CommitteeRole.SECRETARY)
+    entry.save()
+    ended = TODAY - dt.timedelta(days=2)
+
+    entry.date_left = ended
+    entry.save()
+
+    seat = CommitteeMembership.objects.get(person=person, committee__code="secretariat")
+    # The day the post ended, not today -- the service record has to read
+    # truthfully.
+    assert seat.date_left == ended
+    assert not seat.is_active
+
+
+@pytest.mark.django_db
+def test_a_second_secretary_post_keeps_the_seat_when_the_first_ends(person):
+    """One person may keep the minutes for two committees. Losing one post
+    must not un-seat them while they still hold the other."""
+    first = membership("youth", person, CommitteeRole.SECRETARY)
+    first.save()
+    membership("food", person, CommitteeRole.SECRETARY).save()
+
+    first.date_left = TODAY - dt.timedelta(days=1)
+    first.save()
+
+    seat = CommitteeMembership.objects.get(person=person, committee__code="secretariat")
+    assert seat.is_active
+
+
+@pytest.mark.django_db
+def test_a_volunteered_secretariat_membership_is_never_ended_by_this(person):
+    """Losing a secretary post must not quietly cancel a committee they
+    chose to serve on. Only the EX_OFFICIO seat is AEGIS's to manage."""
     membership("secretariat", person, CommitteeRole.MEMBER).save()
+    entry = membership("youth", person, CommitteeRole.SECRETARY)
+    entry.save()
+
+    entry.date_left = TODAY - dt.timedelta(days=1)
+    entry.save()
+
+    volunteered = CommitteeMembership.objects.get(
+        person=person, committee__code="secretariat", role=CommitteeRole.MEMBER
+    )
+    assert volunteered.is_active
+
+
+@pytest.mark.django_db
+def test_the_secretariats_own_secretary_gets_no_extra_seat(person):
+    membership("secretariat", person, CommitteeRole.SECRETARY).save()
+
+    assert (
+        CommitteeMembership.objects.filter(
+            person=person, committee__code="secretariat"
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_the_admin_says_the_seat_was_recorded(client, secretariat_user, person):
     client.force_login(secretariat_user)
 
     response = add_membership_via_admin(client, "youth", person, CommitteeRole.SECRETARY)
 
-    assert "also sit on the Secretariat" not in response.content.decode()
-
-
-@pytest.mark.django_db
-def test_an_ordinary_member_is_not_prompted(client, secretariat_user, person):
-    client.force_login(secretariat_user)
-
-    response = add_membership_via_admin(client, "youth", person, CommitteeRole.MEMBER)
-
-    assert "also sit on the Secretariat" not in response.content.decode()
+    assert "also sits on the Secretariat committee, recorded automatically" in (
+        response.content.decode()
+    )
 
 
 @pytest.mark.django_db

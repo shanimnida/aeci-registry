@@ -163,58 +163,46 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
                 "paper form if this looks wrong.",
                 level=messages.WARNING,
             )
-        self._prompt_for_secretariat_seat(request, obj)
         super().save_model(request, obj, form, change)
+        self._report_secretariat_seat(request, obj)
 
-    def _prompt_for_secretariat_seat(self, request, obj):
-        """Tell whoever recorded a committee secretary that they also sit on
-        the Secretariat committee, and hand them the link to record it.
+    def _report_secretariat_seat(self, request, obj):
+        """Say what the automatic Secretariat seat just did.
 
-        Requested 2026-08-23: "all secretaries per committee are the members
-        of secretariat committee". AEGIS surfaces the rule and a human
-        records the seat -- it does not create the membership itself. Same
-        posture as the duplicate warning above, as the committee cap, and as
-        spec 7.2's children ageing out of CHILD: the software prompts, a
-        person decides (D8). An auto-created row would also have to be
-        auto-ENDED when the secretary's term finishes, which is the software
-        quietly editing someone's service history.
-
-        Nothing is prompted for the Secretariat's own secretary, who is
-        already on it.
+        The Board's rule is that every committee secretary IS a member of
+        the Secretariat committee -- not that they may be -- so
+        CommitteeMembership.save() keeps that seat in step and this only
+        reports it. An earlier build prompted instead; the church confirmed
+        the rule is automatic, and a prompt somebody ignores leaves the
+        roster contradicting the church's own rule.
         """
-        if obj.role != CommitteeRole.SECRETARY or obj._has_ended():
+        if obj.role != CommitteeRole.SECRETARY:
             return
         if obj.committee.code == SECRETARIAT_COMMITTEE_CODE:
             return
-        secretariat = Committee.objects.filter(code=SECRETARIAT_COMMITTEE_CODE).first()
-        if secretariat is None:
-            return
-        already = (
+        seat = (
             CommitteeMembership.objects.active()
-            .filter(person=obj.person, committee=secretariat)
+            .filter(
+                person=obj.person,
+                committee__code=SECRETARIAT_COMMITTEE_CODE,
+                role=CommitteeRole.EX_OFFICIO,
+            )
             .exists()
         )
-        if already:
-            return
-        add_url = (
-            f"{reverse('admin:committees_committeemembership_add')}"
-            f"?committee={secretariat.pk}&person={obj.person.pk}"
-            f"&role={CommitteeRole.EX_OFFICIO}&date_joined={obj.date_joined:%Y-%m-%d}"
-        )
-        self.message_user(
-            request,
-            format_html(
-                "{} is now {} of {}, so they also sit on the {} committee. "
-                'Not added automatically — <a href="{}">record that seat</a> '
-                "if the church wants it on the roster.",
-                obj.person.full_name,
-                obj.get_role_display(),
-                obj.committee.name,
-                secretariat.name,
-                add_url,
-            ),
-            level=messages.INFO,
-        )
+        if seat:
+            self.message_user(
+                request,
+                f"{obj.person.full_name} also sits on the Secretariat committee, "
+                "recorded automatically — every committee secretary does.",
+                level=messages.INFO,
+            )
+        else:
+            self.message_user(
+                request,
+                f"{obj.person.full_name} no longer holds a secretary post, so "
+                "their Secretariat seat has been ended too.",
+                level=messages.INFO,
+            )
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)

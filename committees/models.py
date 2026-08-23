@@ -214,6 +214,78 @@ class CommitteeMembership(TimeStampedModel):
         # want to warn about it (committees/admin.py, imports/services.py)
         # call that method directly instead.
 
+    # The Board's rule, recorded 2026-08-23: the Board appoints each
+    # committee's chairperson, each chairperson appoints their own vice and
+    # secretary, and every committee secretary is a member of the
+    # Secretariat committee. That last clause is automatic -- not a
+    # discretion the church exercises person by person -- so AEGIS keeps the
+    # seat in step rather than prompting for it.
+    SECRETARIAT_COMMITTEE_CODE = "secretariat"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_secretariat_seat()
+
+    def _sync_secretariat_seat(self):
+        """Keep the Secretariat seat that follows from a secretary post in
+        step with the post itself.
+
+        Both directions, because half a rule is worse than none: taking a
+        secretary post seats them on the Secretariat committee, and ending
+        it un-seats them -- but only once they hold no OTHER active
+        secretary post, since one person may keep the minutes for two
+        committees and still be on Secretariat for the second.
+
+        Only ever touches EX_OFFICIO rows. A Secretariat membership someone
+        volunteered for is theirs, `role=MEMBER`, and is never ended here --
+        losing a secretary post must not quietly cancel a committee they
+        chose to serve on.
+        """
+        if self.role != CommitteeRole.SECRETARY:
+            return
+        if self.committee.code == self.SECRETARIAT_COMMITTEE_CODE:
+            return
+        secretariat = Committee.objects.filter(
+            code=self.SECRETARIAT_COMMITTEE_CODE
+        ).first()
+        if secretariat is None:
+            return
+
+        still_a_secretary = (
+            CommitteeMembership.objects.active()
+            .filter(person=self.person, role=CommitteeRole.SECRETARY)
+            .exclude(committee=secretariat)
+            .exists()
+        )
+        seat = (
+            CommitteeMembership.objects.active()
+            .filter(
+                person=self.person,
+                committee=secretariat,
+                role=CommitteeRole.EX_OFFICIO,
+            )
+            .first()
+        )
+
+        if still_a_secretary and seat is None:
+            seat = CommitteeMembership(
+                committee=secretariat,
+                person=self.person,
+                role=CommitteeRole.EX_OFFICIO,
+                date_joined=self.date_joined,
+                created_by=self.created_by,
+                updated_by=self.updated_by,
+            )
+            seat.full_clean()
+            seat.save()
+        elif not still_a_secretary and seat is not None:
+            # Ends the day the last secretary post ended, not today, so the
+            # service record reads truthfully.
+            seat.date_left = self.date_left or timezone.localdate()
+            seat.updated_by = self.updated_by
+            seat.full_clean()
+            seat.save()
+
     def _check_dates_are_ordered(self):
         """Mirrors Appointment.clean(): a transposed date must be rejected here too.
 
