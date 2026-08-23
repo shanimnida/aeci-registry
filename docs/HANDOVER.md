@@ -947,3 +947,48 @@ Ruling: R54 — the AccessLog write moved with the reading. PersonAdmin.change_v
   the missing-data and celebrations reports follow.
   Cost if wrong: viewing then editing writes two rows for one sitting. Already accepted for the
   change view (Task 10, "completeness beats tidiness in an audit log") and unchanged here.
+
+=== MEMBER NUMBERS GO RANDOM (518 tests) ===
+Requested 2026-08-24, with the long-term question attached: "could this be their id number as well?"
+
+Ruling: R55 — member numbers are now MEM- plus six random digits and a seventh check digit,
+  replacing the sequential MEM-0001. The reason is the ID-card question, not novelty: a sequential
+  number discloses the church's headcount and each member's place in the joining order to anyone
+  holding it, which was acceptable while the number lived on an internal form and stops being
+  acceptable once it is printed on a card a member carries (spec 7.5). Confirmed with the user
+  first that nothing is committed — no member has been told a number and none is printed — because
+  renumbering after that point is not reversible. Register order now comes from date_became_member,
+  which is the date the church actually cares about rather than one smuggled into the identifier.
+  Chose ONE random number over keeping MEM- sequential and adding a separate card ID (the shape
+  spec 11 used for the Facebook consent), on the user's call: fewer concepts for the next volunteer.
+  Cost if wrong: 7.6's membership register can no longer be ordered by the number itself.
+
+Ruling: R56 — Damm, not Luhn. Luhn is the familiar choice but misses the 09 <-> 90 transposition,
+  and a transposition is precisely the error a human makes copying a number off a card. Damm's
+  totally anti-symmetric quasigroup catches ALL single-digit errors and ALL adjacent transpositions;
+  both properties are asserted exhaustively in tests rather than trusted from the literature.
+  The check digit is load-bearing rather than decorative: member_no_is_valid is the single
+  definition of "a real member number", and it is what renumber_members uses to tell a number it
+  should replace from one it must leave alone. A hand-set number therefore survives a re-run only
+  if its check digit is right — the difference between "somebody chose this" and "somebody mistyped
+  one". The admin WARNS on a bad check digit rather than refusing, same posture as the duplicate
+  warning: a number copied from an old document may predate the scheme, and refusing it would make
+  that record un-encodable.
+
+Ruling: R57 — reconcile_member_sequence and its management command are DELETED, not left in place.
+  R26 wired reconciliation into the assignment path because a sequential allocator could fall
+  behind a hand-entered number. There is no sequence to fall behind any more, and leaving a
+  function that says "advance the MEM sequence" when MEM has no sequence is worse than removing it.
+  ControlNumberSequence itself stays — Phase B's EARF/FR/RB/CDV numbers are filed per year and
+  remain sequential. The vestigial MEM row in that table is left alone rather than removed by a
+  data migration: it costs nothing and deleting data carries risk for no gain.
+  Two tests that asserted sequential allocation were rewritten rather than deleted, the same call
+  R26 made in the other direction: what still matters is that a hand-entered number is never
+  overwritten and that no two people share a number.
+
+Ruling: R58 — renumber_members is safe to run twice by construction, not by a flag. It replaces
+  only numbers that fail member_no_is_valid, so after one clean run there is nothing left to
+  change. It never gives a number to somebody who has none — D9 is explicit that issuing one to a
+  person the church never accepted leaves a permanent gap in the register, and "Assign member
+  numbers" in the admin is the deliberate way to do that. --dry-run prints each change without
+  allocating, so a dry run cannot consume or promise a number.

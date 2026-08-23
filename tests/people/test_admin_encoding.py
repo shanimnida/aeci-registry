@@ -148,13 +148,18 @@ def test_saving_a_person_over_a_seeded_officer_warns_and_names_the_weak_match(cl
 
 
 @pytest.mark.django_db
-def test_member_numbers_are_assigned_in_sequence_and_never_overwritten():
-    """Day-one workflow: the Secretariat has already typed MEM-0099 in by
+def test_a_hand_entered_number_is_never_overwritten():
+    """Day-one workflow: the Secretariat has already typed a number in by
     hand off a paper form before anyone runs "Assign member numbers". The
-    allocator must continue past it, not collide with it — MEM-0001 would
-    be a second person holding the same number as "existing", which is the
-    bug this test used to encode as expected behaviour.
+    action fills gaps; it never touches a number somebody already holds.
+
+    This test used to assert MEM-0099 then MEM-0100 -- allocation had to
+    continue past a hand-entered number, because a sequential allocator
+    could collide with one. Member numbers went random on 2026-08-24, so
+    there is no sequence left to fall behind: what still matters is that an
+    existing number survives untouched.
     """
+    from core.numbering import member_no_is_valid
     from people.admin import assign_member_numbers
 
     existing = Person.objects.create(
@@ -173,17 +178,18 @@ def test_member_numbers_are_assigned_in_sequence_and_never_overwritten():
     existing.refresh_from_db()
     fresh.refresh_from_db()
     assert existing.member_no == "MEM-0099"
-    assert fresh.member_no == "MEM-0100"
+    assert member_no_is_valid(fresh.member_no)
+    assert fresh.member_no != existing.member_no
 
 
 @pytest.mark.django_db
-def test_assign_member_numbers_reconciles_hand_entered_numbers_on_its_own():
-    """The Secretariat must not have to remember to run the separate
-    "reconcile_member_sequence" management command before assigning: the
-    admin action itself must be safe against hand-entered numbers written
-    in any order, including ones higher than anything the sequence has
-    allocated so far.
+def test_assigning_twice_gives_everyone_their_own_number():
+    """The collision this replaces: a sequential allocator handed out a
+    number somebody had already typed in by hand. Random numbers cannot
+    fall behind, but they can in principle repeat, so the property worth
+    holding on to is simply that no two people end up sharing one.
     """
+    from core.numbering import member_no_is_valid
     from people.admin import assign_member_numbers
 
     Person.objects.create(
@@ -191,21 +197,18 @@ def test_assign_member_numbers_reconciles_hand_entered_numbers_on_its_own():
         membership_status=MembershipStatus.MEMBER,
         member_no="MEM-0150",
     )
-    first_fresh = Person.objects.create(
-        last_name="Bilango", first_name="Alpha",
-        membership_status=MembershipStatus.MEMBER,
-    )
-    second_fresh = Person.objects.create(
-        last_name="Cruz", first_name="Beta",
-        membership_status=MembershipStatus.MEMBER,
-    )
+    for first_name in ("Alpha", "Beta", "Gamma", "Delta"):
+        Person.objects.create(
+            last_name="Bilango", first_name=first_name,
+            membership_status=MembershipStatus.MEMBER,
+        )
 
     assign_member_numbers(Person.objects.all())
+    assign_member_numbers(Person.objects.all())
 
-    first_fresh.refresh_from_db()
-    second_fresh.refresh_from_db()
-    assigned = {first_fresh.member_no, second_fresh.member_no}
-    assert assigned == {"MEM-0151", "MEM-0152"}
+    numbers = list(Person.objects.values_list("member_no", flat=True))
+    assert len(numbers) == len(set(numbers))
+    assert all(member_no_is_valid(n) for n in numbers if n != "MEM-0150")
 
 
 @pytest.mark.django_db

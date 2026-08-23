@@ -22,7 +22,7 @@ from people.celebrations import (
     upcoming_anniversaries,
     upcoming_birthdays,
 )
-from core.numbering import next_member_no, reconcile_member_sequence
+from core.numbering import member_no_is_valid, new_member_no
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
 
@@ -98,19 +98,17 @@ def describe_duplicate_match(candidate, date_of_birth):
 def assign_member_numbers(queryset):
     """Give a MEM- number to members who lack one. Never overwrites.
 
-    Reconciles the MEM sequence against any hand-entered numbers first, so
-    an allocation can never collide with a number the Secretariat already
-    typed in from a paper form. Called once per invocation (not once per
-    row) since reconciliation is a full scan of Person.member_no — see
-    core.numbering.reconcile_member_sequence for why that cost is fine here
-    but would not be inside next_member_no() itself.
+    No sequence reconciliation any more: member numbers stopped being
+    sequential on 2026-08-24, so there is no counter that can fall behind a
+    hand-entered number. `new_member_no` checks each candidate against what
+    is already on file, and `Person.member_no` carries a unique constraint
+    underneath that.
     """
-    reconcile_member_sequence()
     assigned = 0
     for person in queryset.filter(
         member_no__isnull=True, membership_status=MembershipStatus.MEMBER
     ):
-        person.member_no = next_member_no()
+        person.member_no = new_member_no()
         person.save(update_fields=["member_no"])
         assigned += 1
     return assigned
@@ -215,6 +213,20 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
                 request,
                 f"This may duplicate an existing record: {descriptions}. Saved anyway — "
                 f"check and merge by hand if it is the same person.",
+                level=messages.WARNING,
+            )
+        if obj.member_no and not member_no_is_valid(obj.member_no):
+            # A warning, not a refusal -- same posture as the duplicate
+            # warning above. A number copied off an old document may
+            # genuinely predate the check digit, and refusing it would make
+            # that record un-encodable. But a mistyped one is the commoner
+            # case by far, and this is the only moment anybody would notice.
+            self.message_user(
+                request,
+                f"{obj.member_no} is not a valid member number — the check digit "
+                "does not match. Saved anyway, but check it against the card or "
+                'document you copied it from. New numbers come from "Assign '
+                'member numbers".',
                 level=messages.WARNING,
             )
         super().save_model(request, obj, form, change)
