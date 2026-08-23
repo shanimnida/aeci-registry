@@ -1,0 +1,46 @@
+{% comment %}
+One record of a duplicate pair. Rendered twice per pair, from
+duplicates.html, with `person`, `score`, `other` and `attach` set.
+
+The "keep" button is a form POST rather than a link, because it deletes a
+person and a GET must never do that -- a prefetching browser or a pasted
+URL would be enough.
+{% endcomment %}
+<div class="p-4">
+    <div class="flex items-baseline justify-between gap-3 mb-1">
+        <a href="{% url 'admin:people_person_view' person.pk %}" class="font-semibold underline">
+            {{ person.full_name }}
+        </a>
+        <span class="text-xs text-base-400 dark:text-base-500 whitespace-nowrap">#{{ person.pk }}</span>
+    </div>
+
+    <p class="text-sm text-base-500 dark:text-base-400">
+        {{ score }} field{{ score|pluralize }} filled in
+        {% if pair.fuller and pair.fuller.pk == person.pk %}
+            <span class="text-base-700 dark:text-base-300">— holds more</span>
+        {% endif %}
+    </p>
+
+    <p class="text-sm mt-2">
+        {% if attach.committees or attach.households or attach.scans or attach.wards %}
+            <span class="text-base-500 dark:text-base-400">Would take with it:</span>
+            {% if attach.committees %}{{ attach.committees }} committee role{{ attach.committees|pluralize }}{% endif %}
+            {% if attach.households %}{% if attach.committees %}, {% endif %}{{ attach.households }} household place{{ attach.households|pluralize }}{% endif %}
+            {% if attach.scans %}{% if attach.committees or attach.households %}, {% endif %}{{ attach.scans }} scan{{ attach.scans|pluralize }}{% endif %}
+            {% if attach.wards %}{% if attach.committees or attach.households or attach.scans %}, {% endif %}guardian to {{ attach.wards }}{% endif %}
+        {% else %}
+            <span class="text-base-400 dark:text-base-500">Nothing else attached.</span>
+        {% endif %}
+    </p>
+
+    <form method="post" class="mt-3">
+        {% csrf_token %}
+        <input type="hidden" name="keep" value="{{ person.pk }}">
+        <input type="hidden" name="remove" value="{{ other.pk }}">
+        <button type="submit"
+                class="px-3 py-2 rounded border border-base-300 dark:border-base-600 text-sm font-medium"
+                onclick="return confirm('Keep {{ person.full_name|escapejs }} and permanently delete {{ other.full_name|escapejs }}? Anything attached to {{ other.full_name|escapejs }} moves across first. This cannot be undone.');">
+            Keep this one
+        </button>
+    </form>
+</div>

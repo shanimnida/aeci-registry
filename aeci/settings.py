@@ -108,6 +108,16 @@ UNFOLD = {
                         ),
                     },
                     {
+                        # ICT only: this screen deletes people, and hard
+                        # delete is ICT's alone (spec 4).
+                        "title": _("Duplicates"),
+                        "icon": "join_inner",
+                        "link": reverse_lazy("admin:people_person_duplicates"),
+                        "permission": lambda request: request.user.has_perm(
+                            "people.delete_person"
+                        ),
+                    },
+                    {
                         # Spec 7.7 grants this report to the Sunshine
                         # chairperson and withholds it from the Board and
                         # Treasurer, which no Person permission expresses --

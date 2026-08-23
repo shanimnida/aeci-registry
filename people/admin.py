@@ -3,7 +3,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404
 from django.db.models import Q
 from django.db.models.constants import LOOKUP_SEP
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
@@ -23,6 +23,7 @@ from people.celebrations import (
     upcoming_birthdays,
 )
 from core.numbering import member_no_is_valid, new_member_no
+from people.duplicates import find_duplicate_pairs, merge_into
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
 
@@ -364,8 +365,77 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
                 self.admin_site.admin_view(self.person_view),
                 name="people_person_view",
             ),
+            path(
+                "duplicates/",
+                self.admin_site.admin_view(self.duplicates_view),
+                name="people_person_duplicates",
+            ),
         ]
         return custom + super().get_urls()
+
+    # -- duplicates ----------------------------------------------------
+
+    def duplicates_view(self, request):
+        """Probable duplicates, side by side, for a human to resolve.
+
+        Deleting a duplicate is destructive and the wrong one is easy to
+        pick: the seeded chairperson looks emptier than her own imported
+        form, but she is the row carrying the committee role. So the screen
+        shows what each record holds, what each would take with it, and
+        where the two disagree, and does nothing until somebody chooses.
+
+        POST merges: it moves committee service, household places and
+        scanned forms onto the record the reviewer kept, then deletes the
+        other. It never copies field values between the two -- deciding
+        whose birthdate is right is the judgement the reviewer is here to
+        make.
+
+        Deleting a person is ICT's alone (spec 4), so this needs delete
+        permission, not merely view.
+        """
+        if not self.has_delete_permission(request):
+            raise PermissionDenied
+
+        if request.method == "POST":
+            keep = self.get_object(request, request.POST.get("keep", ""))
+            remove = self.get_object(request, request.POST.get("remove", ""))
+            if keep is None or remove is None or keep.pk == remove.pk:
+                self.message_user(
+                    request,
+                    "Could not resolve that pair — nothing was changed.",
+                    level=messages.ERROR,
+                )
+            else:
+                removed_name = remove.full_name
+                moved = merge_into(keep, remove)
+                self.message_user(
+                    request,
+                    f"Kept {keep.full_name} and deleted {removed_name}. Moved "
+                    f"{moved['committees']} committee role(s), "
+                    f"{moved['households']} household place(s) and "
+                    f"{moved['scans']} scan(s) across."
+                    + (
+                        f" {moved['dropped']} duplicate attachment(s) dropped."
+                        if moved["dropped"]
+                        else ""
+                    ),
+                    level=messages.SUCCESS,
+                )
+            return redirect("admin:people_person_duplicates")
+
+        pairs = find_duplicate_pairs()
+        AccessLog.record(
+            user=request.user,
+            report=f"possible duplicates ({len(pairs)} pair(s))"[:120],
+            ip=request.META.get("REMOTE_ADDR"),
+        )
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Possible duplicates",
+            "opts": self.model._meta,
+            "pairs": pairs,
+        }
+        return render(request, "admin/people/person/duplicates.html", context)
 
     # -- read-only detail ----------------------------------------------
 

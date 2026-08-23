@@ -206,6 +206,7 @@ class CommitteeMembership(TimeStampedModel):
         self._check_dates_are_ordered()
         self._check_function_belongs_to_committee()
         self._check_single_chairperson()
+        self._check_one_role_per_committee()
         self._check_oversight_is_on_the_board()
         # The self-selected committee cap used to be checked here too, as a
         # hard refusal (self._check_self_selected_limit(), removed
@@ -266,8 +267,17 @@ class CommitteeMembership(TimeStampedModel):
             )
             .first()
         )
+        # Somebody who volunteered for Secretariat is already on it, and one
+        # person holds one role on a committee at a time (see
+        # _check_one_role_per_committee). Adding an ex-officio seat beside
+        # their own membership would put them on the same roster twice.
+        already_on_secretariat = (
+            CommitteeMembership.objects.active()
+            .filter(person=self.person, committee=secretariat)
+            .exists()
+        )
 
-        if still_a_secretary and seat is None:
+        if still_a_secretary and seat is None and not already_on_secretariat:
             seat = CommitteeMembership(
                 committee=secretariat,
                 person=self.person,
@@ -384,6 +394,37 @@ class CommitteeMembership(TimeStampedModel):
                 f"{clash.person.full_name} is already "
                 f"{self.get_role_display()} of {self.committee.name}. "
                 "End that role first."
+            )
+
+    def _check_one_role_per_committee(self):
+        """One person holds one role on a committee at a time.
+
+        Added 2026-08-24 after the church found somebody down as both
+        Chairperson and Member of the same committee: "a chairperson
+        shouldnt even be marked as member since thats common sense." It is,
+        and it is the same kind of rule as the one-chairperson rule -- a
+        structural fact about what a roster means, not a policy the church
+        might waive. Chairing a committee is a way of being on it, not a
+        second thing you do there.
+
+        Scoped to ACTIVE memberships, not enforced as a database
+        constraint, because serving, leaving and later rejoining is
+        ordinary and the history of it has to stay recordable.
+        """
+        if self._has_ended():
+            return
+        clash = (
+            CommitteeMembership.objects.active()
+            .filter(committee=self.committee, person=self.person)
+            .exclude(pk=self.pk)
+            .first()
+        )
+        if clash:
+            raise ValidationError(
+                f"{self.person.full_name} is already "
+                f"{clash.get_role_display()} of {self.committee.name}. One "
+                "person holds one role on a committee at a time — change the "
+                "existing role rather than adding a second."
             )
 
     def _check_oversight_is_on_the_board(self):

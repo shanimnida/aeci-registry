@@ -1,0 +1,74 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% comment %}
+Two records that look like one person, side by side.
+
+The screen leans on one idea: the record holding MORE is not necessarily
+the record that is RIGHT. So "holds more" is stated as a count and never as
+a recommendation, disagreements between the two are pulled out where they
+cannot be missed, and what each record would take with it if deleted is
+shown next to it -- because the commonest wrong choice here is deleting the
+seeded chairperson, who looks emptier than her own imported form while
+being the row that carries her committee role.
+{% endcomment %}
+
+{% block content %}
+<div class="max-w-5xl">
+
+    <h1 class="text-2xl font-semibold mb-1">Possible duplicates</h1>
+    <p class="text-sm text-base-500 dark:text-base-400 mb-6">
+        {{ pairs|length }} pair{{ pairs|length|pluralize }} matched on name.
+        Keeping one moves its partner's committee roles, household places and
+        scans across before deleting it. Nothing is copied between the two
+        records — if they disagree on a field, the record you keep keeps its
+        own answer.
+    </p>
+
+    {% for pair in pairs %}
+        <section class="mb-8 border border-base-200 dark:border-base-700 rounded overflow-hidden">
+
+            {% if pair.conflicts %}
+                <div class="px-4 py-3 border-b border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 text-sm">
+                    <strong>These two disagree</strong> on
+                    {% for field in pair.conflicts %}{{ field.label|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+                    One of them is wrong — check the paper before you delete either.
+                </div>
+            {% endif %}
+
+            <div class="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-base-200 dark:divide-base-700">
+                {% for side in "LR" %}
+                    {% if side == "L" %}
+                        {% with person=pair.left score=pair.left_score other=pair.right attach=pair.left_attachments %}
+                            {% include "admin/people/person/_duplicate_side.html" %}
+                        {% endwith %}
+                    {% else %}
+                        {% with person=pair.right score=pair.right_score other=pair.left attach=pair.right_attachments %}
+                            {% include "admin/people/person/_duplicate_side.html" %}
+                        {% endwith %}
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            <table class="w-full text-sm">
+                <tbody>
+                    {% for field in pair.fields %}
+                        {% if field.left or field.right %}
+                            <tr class="border-t border-base-200 dark:border-base-700 {% if not field.agree and not field.only_one_has_it %}bg-amber-50 dark:bg-amber-950{% endif %}">
+                                <th scope="row" class="text-left font-normal text-base-500 dark:text-base-400 px-4 py-2 w-40">{{ field.label }}</th>
+                                <td class="px-4 py-2">{{ field.left|default:"—" }}</td>
+                                <td class="px-4 py-2">{{ field.right|default:"—" }}</td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    {% empty %}
+        <p class="text-base-500 dark:text-base-400">
+            No two records look like the same person. Nothing to do here.
+        </p>
+    {% endfor %}
+
+</div>
+{% endblock %}

@@ -992,3 +992,44 @@ Ruling: R58 — renumber_members is safe to run twice by construction, not by a 
   person the church never accepted leaves a permanent gap in the register, and "Assign member
   numbers" in the admin is the deliberate way to do that. --dry-run prints each change without
   allocating, so a dry run cannot consume or promise a number.
+
+=== ONE ROLE PER COMMITTEE, AND A DUPLICATE REVIEW SCREEN (540 tests) ===
+Both from real data on 2026-08-24: two Sonia Abaigar rows in the Food committee, one Chairperson
+(seeded from the Board minutes) and one Member (from her own profiling form).
+
+Ruling: R59 — one person holds one active role on a committee at a time; hard refused. The user's
+  words: "a chairperson shouldnt even be marked as member since thats common sense." It is, and it
+  is the same KIND of rule as the one-chairperson rule — a structural fact about what a roster
+  means, not policy the church might waive. Chairing a committee is a way of being on it, not a
+  second thing you do there. Scoped to ACTIVE memberships and enforced in clean() rather than as a
+  database constraint, because serving, leaving and later rejoining is ordinary and that history
+  has to stay recordable.
+  This also caught a case I had introduced myself two commits earlier: _sync_secretariat_seat
+  looked only for an existing EX_OFFICIO row, so someone who had VOLUNTEERED for Secretariat
+  (role=MEMBER) got an ex-officio seat added beside their own membership — the same person on one
+  roster twice. Now it checks for any active Secretariat membership before seating anyone.
+
+Ruling: R60 — duplicate review is a SCREEN, not a command, and it merges rather than merely
+  deleting. Spec 1.2 put merging out of scope for Phase A on the grounds that there were not yet
+  enough duplicates to show what merging should do. There are now, and they showed it: the fuller
+  record is not the correct one. The seeded chairperson looks emptier than her own imported form
+  while being the row that carries her committee role, so "delete the less complete one" — the
+  user's own expected workflow — would quietly demote her from Chairperson of Food to Member.
+  The screen therefore shows what each record HOLDS (a count, never a recommendation), what each
+  would TAKE WITH IT if deleted, and where the two DISAGREE, and does nothing until a human
+  chooses. `merge_into` moves committee service, household places, scans and guardian links onto
+  the kept record, then deletes the other. Where both records name the same committee, an appointed
+  role beats a plain membership — which is exactly the Abaigar case.
+  It never copies FIELD VALUES between the two. Deciding whose birthdate is right is the judgement
+  the reviewer is there to make, and a merge that quietly overwrote the kept record would be making
+  it for them. Tested explicitly.
+  ICT only (delete permission), because hard delete is ICT's alone under spec 4 — the Secretariat
+  manages records and does not destroy them. One AccessLog entry per screen view, not one per pair.
+  Cost if wrong: a merge is irreversible. The kept record's own field values are untouched, so the
+  loss is bounded to whatever only the deleted record held — which is what the side-by-side table
+  exists to show before the button is pressed.
+
+Matching deliberately does NOT require a birthdate: half the register has none and the seeded
+officers have none by construction, so requiring one would miss precisely the duplicates that
+actually occur. Middle names are compared the same forgiving way child linking does (R43), since
+that is how the Abaigar child pair was created in the first place.

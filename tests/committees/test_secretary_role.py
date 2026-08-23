@@ -126,11 +126,13 @@ def test_the_ex_officio_seat_on_secretariat_does_not_consume_a_slot_either(perso
     read as three, and warn every single time."""
     membership("sunshine", person, CommitteeRole.MEMBER).save()
     membership("food", person, CommitteeRole.MEMBER).save()
+    # The Secretariat seat is created by this save, not by hand.
     membership("youth", person, CommitteeRole.SECRETARY).save()
 
-    seat = membership("secretariat", person, CommitteeRole.EX_OFFICIO)
-    seat.save()
-
+    seat = CommitteeMembership.objects.active().get(
+        person=person, committee__code="secretariat"
+    )
+    assert seat.role == CommitteeRole.EX_OFFICIO
     assert seat.self_selected_overflow_count() is None
     volunteered = CommitteeMembership.objects.active().filter(
         person=person, role=CommitteeRole.MEMBER
@@ -313,3 +315,58 @@ def test_the_overview_flags_a_committee_with_no_secretary(client, secretariat_us
     ).content.decode()
 
     assert "No secretary assigned" in body
+
+
+# -- one role per committee ---------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_chairperson_cannot_also_be_marked_a_member_of_the_same_committee(person):
+    """Found in real data: the same person down as both Chairperson and
+    Member of Food. Chairing a committee is a way of being on it, not a
+    second thing you do there."""
+    membership("food", person, CommitteeRole.CHAIRPERSON).save()
+
+    with pytest.raises(ValidationError) as exc:
+        membership("food", person, CommitteeRole.MEMBER).full_clean()
+
+    assert "already Chairperson of Food" in str(exc.value)
+
+
+@pytest.mark.django_db
+def test_the_same_person_may_serve_on_two_different_committees(person):
+    membership("food", person, CommitteeRole.CHAIRPERSON).save()
+
+    entry = membership("youth", person, CommitteeRole.MEMBER)
+    entry.full_clean()  # must not raise
+
+
+@pytest.mark.django_db
+def test_rejoining_a_committee_after_leaving_is_still_allowed(person):
+    """Serving, leaving and later coming back is ordinary, and the history
+    of it has to stay recordable -- which is why this is a rule about
+    ACTIVE memberships rather than a database constraint."""
+    membership(
+        "food", person, CommitteeRole.MEMBER,
+        date_joined=TODAY - dt.timedelta(days=400),
+        date_left=TODAY - dt.timedelta(days=200),
+    ).save()
+
+    entry = membership("food", person, CommitteeRole.MEMBER)
+    entry.full_clean()  # must not raise
+
+
+@pytest.mark.django_db
+def test_a_volunteer_for_secretariat_gets_no_second_ex_officio_row(person):
+    """The case this fix introduced: someone who ticked Secretariat on
+    their form is already on it, so a secretary post must not put them on
+    the same roster twice."""
+    membership("secretariat", person, CommitteeRole.MEMBER).save()
+
+    membership("youth", person, CommitteeRole.SECRETARY).save()
+
+    rows = CommitteeMembership.objects.active().filter(
+        person=person, committee__code="secretariat"
+    )
+    assert rows.count() == 1
+    assert rows.get().role == CommitteeRole.MEMBER
