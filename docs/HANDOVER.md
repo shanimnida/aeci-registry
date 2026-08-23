@@ -1155,3 +1155,25 @@ Ruling: R72 — password validators cut from four to one, at the church's reques
   the other three shape a password rather than lengthen it. Flagged for revisiting if AEGIS ever
   issues member logins (it does not today, D4): twenty careful officers is a different population
   from a congregation.
+
+Ruling: R73 — Django's per-user permission picker is REMOVED from the account form, not restyled.
+  The church's words: "this is too hard and taxing to read and do." It was — sixty-odd rows of
+  "Committees | church position | Can add appointment" in a dual-list shuttle widget — but that is
+  the smaller reason. AEGIS grants nothing to individuals: every capability in spec 4 belongs to
+  one of five groups, and core/groups.py plus core/migrations/0002_create_groups.py are the single
+  place that says what each one can do. A per-user grant could therefore only ever give somebody
+  access their ROLE does not have — invisible to any group audit, read by nothing in this project,
+  and surviving a move between groups. Restyling it would have made a thing that should not be used
+  easier to use.
+  Groups became plain checkboxes in the same pass: there are five with real names, and a
+  filter-and-shuttle widget in front of five checkboxes is machinery standing in front of a simple
+  question. The form is now four short sections — who they are, access, and a collapsed Advanced —
+  with the "staff status or they cannot log in" warning on the form rather than only in
+  docs/DEPLOYMENT.md, and the superuser warning on the page that grants it.
+  IMPORTANT: removing the picker does not HIDE an existing grant. Anything already granted directly
+  is named in a read-only field with what to do about it, because access nobody can see is worse
+  than access that is merely awkward to edit. Clearing one is a deliberate shell action, which is
+  the right weight for something that should not exist.
+  Cost if wrong: a genuine one-off permission grant now needs the shell. That is the intended
+  friction — if a role needs a capability, the role should get it, in the migration, for everyone
+  holding it.
