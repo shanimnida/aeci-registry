@@ -42,7 +42,9 @@ SELF_SELECTABLE_COMMITTEE_NAMES = (
 APPOINTED_ONLY_COMMITTEE_NAME = "Grievance and Reconciliation"
 ALL_COMMITTEE_NAMES = SELF_SELECTABLE_COMMITTEE_NAMES + (APPOINTED_ONLY_COMMITTEE_NAME,)
 
-FORM_VERSIONS = ("v1", "v2")
+# v3 is the online form (docs/ONLINE_FORM.md), which adds the public
+# Facebook greeting question to v2's consent clause.
+FORM_VERSIONS = ("v1", "v2", "v3")
 CONFIDENCE_LEVELS = ("high", "medium", "low")
 GENDERS = ("MALE", "FEMALE")
 CIVIL_STATUSES = ("SINGLE", "MARRIED", "WIDOWED", "SEPARATED", "ANNULLED")

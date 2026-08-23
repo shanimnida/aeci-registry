@@ -6,6 +6,12 @@ data/scanned-forms/
 *.heic
 *.pdf
 
+# ...but the church's own seal is branding, not member data. It has to
+# ship or the deployed site has no logo. Scoped to that one directory so
+# the blanket image rule above still catches a photographed form dropped
+# anywhere else in the project.
+!static/aegis/*.png
+
 # Secrets
 .env
 .env.*

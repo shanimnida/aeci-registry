@@ -15,6 +15,7 @@ and is never used in fixtures or tests.
 import datetime as dt
 
 import pytest
+from django.utils import timezone
 from django.contrib.auth.models import Group, User
 from django.urls import reverse
 
@@ -29,7 +30,14 @@ from people.models import (
 )
 from records.models import AccessLog
 
-TODAY = dt.date.today()
+# timezone.localdate(), not dt.date.today(): the code computes every
+# window against TIME_ZONE (Asia/Manila) while date.today() reads the
+# machine's own clock. Around midnight Manila the two are a day apart,
+# and a test saying "a birthday two days from now" then builds a date
+# the code does not agree is two days away. A suite that fails once a
+# day at a particular hour teaches whoever inherits it to re-run until
+# green (R6).
+TODAY = timezone.localdate()
 
 
 def person_view_url(person):

@@ -332,15 +332,59 @@ class ImportBatchAdmin(ModelAdmin):
                         .order_by("-uploaded_at")
                         .first()
                     )
+                    # A Google Forms response sheet is a RUNNING list: the
+                    # volunteer re-uploads the same file with a few more rows
+                    # each time (docs/ONLINE_FORM.md). Every entry carries the
+                    # submission timestamp, which never changes as the sheet
+                    # grows, so anything already staged in ANY earlier batch is
+                    # skipped here -- whatever became of it. A row that was
+                    # approved must not come back, and neither must one that
+                    # was rejected or is still sitting in the queue.
+                    already_staged = set(
+                        StagedPerson.objects.exclude(source_key="").values_list(
+                            "source_key", flat=True
+                        )
+                    )
+                    fresh, repeats = [], 0
+                    for entry in entries:
+                        source_key = entry.pop("_source_key", "")
+                        if source_key and source_key in already_staged:
+                            repeats += 1
+                            continue
+                        if source_key:
+                            already_staged.add(source_key)
+                        fresh.append((source_key, entry))
+
+                    if not fresh:
+                        self.message_user(
+                            request,
+                            f"Every one of the {repeats} response(s) in that file has "
+                            "already been imported. Nothing new to review.",
+                            messages.INFO,
+                        )
+                        return redirect("admin:imports_importbatch_queue")
+
                     batch = ImportBatch.objects.create(
                         source_filename=form.cleaned_data["file"].name,
                         uploaded_by=request.user,
                         content_hash=content_hash,
                     )
                     StagedPerson.objects.bulk_create(
-                        StagedPerson(batch=batch, sequence=index, raw_data=entry)
-                        for index, entry in enumerate(entries)
+                        StagedPerson(
+                            batch=batch,
+                            sequence=index,
+                            raw_data=entry,
+                            source_key=source_key,
+                        )
+                        for index, (source_key, entry) in enumerate(fresh)
                     )
+                    if repeats:
+                        self.message_user(
+                            request,
+                            f"{len(fresh)} new response(s) staged. {repeats} were "
+                            "already imported and were skipped.",
+                            messages.INFO,
+                        )
                     if duplicate_batch is not None:
                         self.message_user(
                             request,

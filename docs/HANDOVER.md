@@ -1085,3 +1085,73 @@ Ruling: R64 — two consequences of R59 that only surfaced when this screen was 
   afternoon was refused with nowhere to go. The sole-office and one-role clash checks now ignore a
   membership whose end date has already ARRIVED, while a FUTURE end date still blocks — which is
   exactly the bypass R12 closed, left closed. Rosters still use active() unchanged.
+
+=== THE ONLINE FORM LANDS IN AEGIS (604 tests) ===
+Google Forms responses are now read directly, plus the four gaps docs/ONLINE_FORM.md listed as
+undone when the form was written.
+
+Ruling: R65 — AEGIS reads a Google Forms response sheet NATIVELY rather than being fed a converted
+  CSV, chosen over writing a converter script. The response sheet's columns are the form's own
+  question titles, it carries a Timestamp AEGIS has no column for, no Source Image (there is no
+  photograph of an online submission), and its committee answers arrive as one comma-joined cell
+  rather than twelve. Converting that by hand is roughly twenty column operations per batch, which
+  is exactly where a column gets dragged one across and twenty-two people get somebody else's
+  birthday. Routed inside _rows_to_entries, before the strict header check that would otherwise
+  refuse the file for having thirty wrong columns.
+  Headers are matched on a NORMALISED PREFIX, not exact text: the very first real export already
+  read "Place of Birth (e.g. Baguio City, La Trinidad)" because the church had edited the form
+  after the script created it. A question that cannot be matched is ignored, so the church can add
+  one without breaking the import; a committee name AEGIS does not know is reported rather than
+  dropped.
+
+Ruling: R66 — deduplication is on the submission Timestamp, held in a new StagedPerson.source_key.
+  The sheet is a running list: the volunteer re-uploads the same file with a few more rows each
+  time. A timestamp is fixed when the response is submitted and never moves as the sheet grows,
+  which makes it the one stable identity available. Skipping is checked across ALL batches and
+  regardless of what became of the earlier row — an approved response must not come back, and
+  neither must a rejected one, which is a decision rather than an absence. A file with nothing new
+  creates no batch at all and says so.
+  Cost if wrong: two people submitting in the same second would collide and one would not stage.
+  Not worth designing around for this congregation, and the reviewer sees one row either way.
+
+Ruling: R67 — somebody who declined the data privacy consent is not staged AT ALL. The online form
+  skips its own questions for them, so there is nothing to record, and holding their name is the
+  precise thing they declined. A file where everybody declined is reported as the correct outcome
+  rather than as an error.
+
+Ruling: R68 — public_greeting_consent is set ONLY from a form that asked. v1 and v2 have no
+  Facebook question, so their silence is not agreement — which is the whole reason spec 11 insisted
+  this be a second field rather than a reinterpretation of greeting_opt_out. There is a test
+  asserting a v2 row carrying the flag is ignored. CONSENT_FORM_VERSION moved to v3 and FORM_VERSIONS
+  accepts it. Nickname now flows from the form through the review screen to the Person, closing the
+  gap where every imported member had a blank one on a page that greets people by nickname.
+
+Ruling: R69 — the church's own seal replaces the generic material icon, as UNFOLD["SITE_ICON"] and
+  the favicon. SITE_ICON rather than SITE_LOGO: the seal is square and Unfold's logo slot is a wide
+  wordmark that takes precedence when both are set, so a square mark put there is stretched. The
+  2048px source is resized to 96px and 64px rather than shipped as-is — 1.5MB on every page load
+  for a sidebar mark. Transparent PNG, so one file serves both themes.
+
+Ruling: R70 — one "Appointments" in the sidebar, not two. The Appointment MODEL was listed under
+  Committees as "Appointments" beside the new committee-officer screen, which read as two ways to
+  do the same thing. It is not: Appointment holds church-level offices — Pastor, Treasurer,
+  Secretary, Board Member — which spec 3.3 calls "distinct from committees". Renamed to "Church
+  positions" (verbose_name too, so every screen agrees) and moved into the one Appointments group
+  beside "Committee officers".
+
+Ruling: R71 — the account screens needed Unfold's own three auth forms, not just its ModelAdmin.
+  UserAdmin declares form/add_form/change_password_form itself, and Django uses those declarations
+  rather than the ModelAdmin's widget styling — so the add-user page, which is nothing but two
+  password boxes, rendered as bare unstyled inputs inside a themed shell. Also put staff status in
+  the changelist and wrote the "tick Staff status or they cannot log in" warning into the add form's
+  own description, since docs/DEPLOYMENT.md section 7 calls it the single most common thing to
+  forget and a doc is not where somebody looks mid-task.
+
+Ruling: R72 — password validators cut from four to one, at the church's request, keeping only
+  MinimumLength at 8. The four together made setting a temporary password for a volunteer a fight,
+  and a rule people fight is a rule people work around — the usual workaround being a password on a
+  sticky note, which is worse than anything the other three prevent. Length is the one kept because
+  Django ships no rate limiting on the login page, so the number of guesses required IS the control;
+  the other three shape a password rather than lengthen it. Flagged for revisiting if AEGIS ever
+  issues member logins (it does not today, D4): twenty careful officers is a different population
+  from a congregation.

@@ -120,6 +120,21 @@ class Person(TimeStampedModel):
     consent_given = models.BooleanField(default=False)
     consent_date = models.DateField(null=True, blank=True)
     consent_version = models.CharField(max_length=20, blank=True)
+    # Spec 11 argued for this before the feature existed, and the church
+    # asked for it on 2026-08-23 when the online form was written. It is a
+    # SECOND field rather than a reinterpretation of greeting_opt_out
+    # below: that one is opt-OUT and defaults to "yes, greet me", which is
+    # right for a list twenty officers read and wrong for a page anyone on
+    # the internet can read. Somebody happy to be greeted in the hall has
+    # not thereby agreed to be named online, so this defaults to False and
+    # only a signed v3 consent turns it on.
+    public_greeting_consent = models.BooleanField(
+        default=False,
+        help_text=(
+            "The member has agreed their name may be posted on the church's "
+            "public Facebook page for birthdays and wedding anniversaries."
+        ),
+    )
     greeting_opt_out = models.BooleanField(
         default=False, help_text="Suppress this person from birthday and anniversary lists."
     )

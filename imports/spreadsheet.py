@@ -37,6 +37,7 @@ import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils.exceptions import InvalidFileException
 
+from .googleforms import looks_like_response_sheet, parse_response_rows
 from .parsing import (
     ALL_COMMITTEE_NAMES,
     APPOINTED_ONLY_COMMITTEE_NAME,
@@ -311,6 +312,13 @@ def _rows_to_entries(all_rows: list[list]) -> list[dict]:
     """
     if not all_rows:
         raise ImportValidationError(["The file has no header row."])
+
+    # A Google Forms response sheet is a different shape entirely -- its
+    # columns are the form's own question titles -- so it is recognised and
+    # routed before the strict header check below, which would otherwise
+    # refuse it for having thirty wrong columns. See imports/googleforms.py.
+    if looks_like_response_sheet(all_rows[0]):
+        return parse_response_rows(all_rows)
 
     header_row = all_rows[0]
     header_index: dict[str, int] = {}

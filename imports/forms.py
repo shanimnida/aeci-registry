@@ -1,6 +1,7 @@
 from django import forms
 from unfold.widgets import (
     UnfoldAdminCheckboxSelectMultipleWidget,
+    UnfoldBooleanWidget,
     UnfoldAdminFileFieldWidget,
     UnfoldAdminSelectWidget,
     UnfoldAdminTextareaWidget,
@@ -88,6 +89,11 @@ class StagedPersonForm(forms.Form):
     # other field, for the same reason date_of_birth is: the AI's reading
     # can be wrong, and a wrong spouse match is exactly what the reviewer
     # must be able to correct before approving.
+    # Carried since the online form (docs/ONLINE_FORM.md) asks for it and
+    # Celebrations greets people by it. The AI spreadsheet has no column for
+    # it, so for that path this simply stays blank and editable.
+    nickname = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
+
     spouse_name = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     date_of_marriage = forms.CharField(
         required=False, widget=UnfoldAdminTextInputWidget, help_text="YYYY-MM-DD"
@@ -96,6 +102,15 @@ class StagedPersonForm(forms.Form):
     emergency_contact_name = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     emergency_relationship = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     emergency_number = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
+
+    # Spec 11's separate field, and the church asked for it on the online
+    # form: agreeing the church may hold your details is not agreeing your
+    # name may appear on a public Facebook page. Opt-in, defaulting to no.
+    public_greeting_consent = forms.BooleanField(
+        required=False,
+        label="May be greeted on the public Facebook page",
+        widget=UnfoldBooleanWidget,
+    )
 
     form_version = forms.ChoiceField(choices=[(v, v) for v in FORM_VERSIONS], widget=UnfoldAdminSelectWidget)
     date_filed = forms.CharField(
@@ -143,7 +158,7 @@ def initial_from_data(data: dict) -> dict:
     initial["membership_status"] = data.get("membership_status") or MembershipStatus.MEMBER
     initial["committees"] = data.get("committees") or []
     for text_field in ("member_no", "middle_name", "suffix", "place_of_birth", "nationality",
-                        "home_address", "mobile_number", "email", "spouse_name",
+                        "home_address", "mobile_number", "email", "spouse_name", "nickname",
                         "emergency_contact_name",
                         "emergency_relationship", "emergency_number", "date_of_birth",
                         "date_of_marriage", "date_filed", "certification_date"):

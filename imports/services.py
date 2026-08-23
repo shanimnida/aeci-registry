@@ -369,6 +369,10 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
             first_name=cleaned["first_name"],
             middle_name=cleaned.get("middle_name") or "",
             suffix=cleaned.get("suffix") or "",
+            # The online form asks for this and Celebrations greets people
+            # by it; the AI spreadsheet has no column for one, so that path
+            # simply leaves it blank.
+            nickname=cleaned.get("nickname") or "",
             date_of_birth=_blank_to_none(cleaned.get("date_of_birth")),
             place_of_birth=cleaned.get("place_of_birth") or "",
             gender=cleaned.get("gender") or "",
@@ -388,11 +392,20 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
         )
         # form_version decides whether a Data Privacy Consent section existed
         # on the paper form at all (docs/IMPORT_TEMPLATE.md) -- v1 forms never
-        # asked, so there is nothing to record as consent for them.
-        if cleaned.get("form_version") == "v2":
+        # asked, so there is nothing to record as consent for them. v3 is the
+        # online form, which cannot be submitted without consenting.
+        version = cleaned.get("form_version")
+        if version in ("v2", "v3"):
             person.consent_given = True
             person.consent_date = _blank_to_none(cleaned.get("certification_date"))
-            person.consent_version = "v2"
+            person.consent_version = version
+        # Only ever set from a form that actually asked. v1 and v2 have no
+        # Facebook question, so their silence is not agreement -- spec 11's
+        # whole point is that this defaults to no until somebody says yes.
+        if version == "v3":
+            person.public_greeting_consent = bool(
+                cleaned.get("public_greeting_consent")
+            )
         person.full_clean()
         person.save()
 

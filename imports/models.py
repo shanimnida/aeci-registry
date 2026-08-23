@@ -87,6 +87,16 @@ class StagedPerson(models.Model):
         blank=True,
         help_text="The reviewer's corrections, if any. Falls back to raw_data when absent.",
     )
+    source_key = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Stable identity of this response in its source, used to skip "
+            "rows already staged. For a Google Forms export it is the "
+            "submission timestamp, which never changes as the sheet grows."
+        ),
+    )
     status = models.CharField(
         max_length=10, choices=StagedPersonStatus.choices, default=StagedPersonStatus.PENDING
     )

@@ -70,6 +70,13 @@ class AppointmentQuerySet(models.QuerySet):
 
 
 class Appointment(TimeStampedModel):
+    """A church-level office held by a person -- Pastor, Treasurer,
+    Secretary, Board Member. Distinct from a committee role, which is a
+    CommitteeMembership; see spec 3.3. Shown as "Church positions" in the
+    admin, because "Appointments" beside the committee-officer screen read
+    as two ways to do the same thing."""
+
+
     person = models.ForeignKey(
         "people.Person", on_delete=models.PROTECT, related_name="appointments"
     )
@@ -84,6 +91,8 @@ class Appointment(TimeStampedModel):
 
     class Meta:
         ordering = ("-start_date",)
+        verbose_name = "church position"
+        verbose_name_plural = "church positions"
 
     def __str__(self):
         return f"{self.person.full_name} — {self.position.name}"

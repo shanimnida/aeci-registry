@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from django.templatetags.static import static
+
 import environ
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
@@ -65,7 +67,23 @@ UNFOLD = {
     "SITE_TITLE": "AEGIS",
     "SITE_HEADER": "AEGIS",
     "SITE_SUBHEADER": "Avdei Elohim Growth Information System",
-    "SITE_SYMBOL": "shield_person",
+    # The church's own seal, supplied by the ICT Committee. It replaces the
+    # generic material icon that stood in for it: this is the mark on AECI's
+    # own documents, and a register that carries it reads as the church's
+    # rather than as software the church happens to use. Transparent PNG, so
+    # the one file works on both the light and dark themes.
+    # SITE_ICON, not SITE_LOGO: the seal is square, and Unfold's logo slot
+    # is a wide wordmark that takes precedence over the icon when both are
+    # set -- a square mark put there gets stretched.
+    "SITE_ICON": lambda request: static("aegis/church-seal-icon.png"),
+    "SITE_FAVICONS": [
+        {
+            "rel": "icon",
+            "sizes": "64x64",
+            "type": "image/png",
+            "href": lambda request: static("aegis/favicon.png"),
+        },
+    ],
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": False,
     "BORDER_RADIUS": "8px",
@@ -153,6 +171,21 @@ UNFOLD = {
                         "link": reverse_lazy("admin:committees_appointment_appoint"),
                         "permission": lambda request: _may_appoint(request),
                     },
+                    {
+                        # The Appointment model: church-level offices --
+                        # Pastor, Treasurer, Secretary, Board Member --
+                        # which spec 3.3 calls "distinct from committees".
+                        # It used to sit under Committees titled
+                        # "Appointments", which read as a second appointments
+                        # screen beside the one above. Same link, named for
+                        # what it actually holds.
+                        "title": _("Church positions"),
+                        "icon": "event_available",
+                        "link": reverse_lazy("admin:committees_appointment_changelist"),
+                        "permission": lambda request: request.user.has_perm(
+                            "committees.view_appointment"
+                        ),
+                    },
                 ],
             },
             {
@@ -211,14 +244,6 @@ UNFOLD = {
                         ),
                         "permission": lambda request: request.user.has_perm(
                             "committees.view_committeemembership"
-                        ),
-                    },
-                    {
-                        "title": _("Appointments"),
-                        "icon": "event_available",
-                        "link": reverse_lazy("admin:committees_appointment_changelist"),
-                        "permission": lambda request: request.user.has_perm(
-                            "committees.view_appointment"
                         ),
                     },
                 ],
@@ -315,11 +340,26 @@ WSGI_APPLICATION = "aeci.wsgi.application"
 
 DATABASES = {"default": env.db("DATABASE_URL")}
 
+# Relaxed 2026-08-24 at the church's request: the four stock validators
+# together made setting a temporary password for a volunteer a fight, and a
+# rule people fight is a rule people work around — the usual workaround
+# being a password written on a sticky note, which is worse than anything
+# these validators prevent.
+#
+# Length is the one kept, because it is the one that matters. Django ships
+# no rate limiting on the login page, so the only thing standing between a
+# guessed password and an account is how many guesses it takes; the other
+# three shape a password rather than lengthen it. Eight characters is
+# Django's own default and is not an onerous ask.
+#
+# If AEGIS ever issues logins to members (it does not today — D4), revisit
+# this: twenty careful officers is a different population from a
+# congregation.
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 8},
+    },
 ]
 
 LANGUAGE_CODE = "en-ph"
@@ -329,6 +369,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# The church's seal and favicon (see UNFOLD["SITE_LOGO"] above). Project
+# assets, not an app's, so they live here rather than under people/ or core/.
+STATICFILES_DIRS = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Contact data is purged this many days after a person becomes
@@ -336,7 +379,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CONTACT_RETENTION_DAYS = 730
 
 # Version string stamped on the current paper profiling form footer.
-CONSENT_FORM_VERSION = "v2 (August 2026)"
+CONSENT_FORM_VERSION = "v3 (August 2026)"
 
 # pg_dump is not guaranteed to be on PATH — a stock Windows install of
 # PostgreSQL does not add its bin directory to PATH, so the bare command
