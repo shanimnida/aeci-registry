@@ -914,3 +914,36 @@ Correction to the record: R50's "governance change" note read as though ICT were
   FILE still described the old behaviour and needed updating to match. Recorded here so the
   handover does not preserve the wrong impression. The "Secretariat means two things" half of R50
   stands unchanged and is unrelated.
+
+=== VIEW FIRST, EDIT DELIBERATELY (504 tests) ===
+Requested 2026-08-24: clicking a person or household should open a page for READING, with an edit
+button, rather than dropping straight into the change form. "make the UI for these things the best
+since these will probably be viewed often."
+
+Ruling: R52 — new read-only pages at `<pk>/view/` on both admins, and `list_display_links = None`
+  with a linked name column so the changelist points at them instead of the change form. Encoding
+  is a minority of what the Secretariat does with a record; looking someone up is the rest, and an
+  edit form is a poor way to read one. Edit sits top-right and is rendered ONLY for a user who
+  holds change permission — a button that would 403 them is a dead end, not a feature.
+  Layout decisions worth keeping: contact details sit above everything else because looking up a
+  number is the commonest reason the page gets opened; and missing fields render as a "Needs
+  follow-up" banner rather than as blank rows, because half the register is incomplete by design
+  (spec 6.3) and an absence there is a task, not an empty cell.
+
+Ruling: R53 — the chairperson restriction on the person page is ONE `{% if not chairperson_only %}`
+  wrapping everything D12 withholds, not a per-field condition. A per-field version is one
+  forgotten `{% if %}` away from a disclosure, and that is exactly the shape of the R18 history
+  leak — a new page that renders a person's record, added after the scoping was written. Scoping is
+  not re-implemented either: `get_object()` goes through `get_queryset()`, so a chairperson asking
+  for someone off their roster gets the same 404 the changelist gives them. Tested both ways —
+  the five permitted fields present, and address, birth year, civil status and household absent.
+  HouseholdAdmin has no chairperson branch at all because the Chairperson group holds no
+  view_household permission; a comment on household_view says what to do if that ever changes.
+
+Ruling: R54 — the AccessLog write moved with the reading. PersonAdmin.change_view still logs (an
+  edit is also a view), and the new person page logs too, so the RA 10173 question "who looked at
+  my record" keeps its answer now that most looking happens somewhere else. The household page
+  writes ONE entry naming the household rather than one per member, per spec 7.6 — the same rule
+  the missing-data and celebrations reports follow.
+  Cost if wrong: viewing then editing writes two rows for one sitting. Already accepted for the
+  change view (Task 10, "completeness beats tidiness in an audit log") and unchanged here.

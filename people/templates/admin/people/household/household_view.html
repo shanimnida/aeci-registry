@@ -1,0 +1,71 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% comment %}
+A household read as a family, not as a form. The members list is the page:
+a household's own fields are a name, an address and a wedding date, and
+none of those is why anyone opens it.
+
+No chairperson branch, unlike the person page: the Chairperson group holds
+no view_household permission, so nobody in it reaches here. If that ever
+changes this needs the same treatment PersonAdmin has -- a household is
+precisely what D12 withholds.
+{% endcomment %}
+
+{% block content %}
+<div class="max-w-3xl">
+
+    <div class="flex items-start justify-between gap-4 mb-6">
+        <a href="{{ changelist_url }}" class="text-sm text-base-500 dark:text-base-400 hover:underline">
+            &larr; Households
+        </a>
+        {% if can_edit %}
+            <a href="{{ change_url }}"
+               class="px-4 py-2 rounded bg-primary-600 text-white text-sm font-medium shrink-0">
+                Edit
+            </a>
+        {% endif %}
+    </div>
+
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold leading-tight">{{ household.name }}</h1>
+        <dl class="mt-2 text-sm text-base-500 dark:text-base-400 space-y-1">
+            {% if household.address %}
+                <div><dt class="sr-only">Address</dt><dd>{{ household.address }}</dd></div>
+            {% endif %}
+            {% if household.date_of_marriage %}
+                <div><dt class="sr-only">Date of marriage</dt><dd>Married {{ household.date_of_marriage|date:"j F Y" }}</dd></div>
+            {% endif %}
+        </dl>
+    </header>
+
+    <section>
+        <h2 class="text-lg font-semibold mb-2">
+            {{ members|length }} member{{ members|length|pluralize }}
+        </h2>
+        {% if members %}
+            <ul class="text-sm">
+                {% for member in members %}
+                    <li class="flex justify-between gap-4 py-3 border-b border-base-200 dark:border-base-700">
+                        <span>
+                            <a href="{{ member.url }}" class="underline font-medium">{{ member.person.full_name }}</a>
+                            {% if member.person.nickname %}
+                                <span class="text-base-400 dark:text-base-500">&ldquo;{{ member.person.nickname }}&rdquo;</span>
+                            {% endif %}
+                            {% if member.person.mobile_number %}
+                                <span class="block text-base-500 dark:text-base-400">{{ member.person.mobile_number }}</span>
+                            {% endif %}
+                        </span>
+                        <span class="text-base-500 dark:text-base-400 whitespace-nowrap">{{ member.role }}</span>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-sm text-base-500 dark:text-base-400">
+                Nobody is recorded in this household yet. Add members from the edit screen.
+            </p>
+        {% endif %}
+    </section>
+
+</div>
+{% endblock %}

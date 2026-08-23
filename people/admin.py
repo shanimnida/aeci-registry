@@ -1,10 +1,12 @@
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
+from django.http import Http404
 from django.db.models import Q
 from django.db.models.constants import LOOKUP_SEP
 from django.shortcuts import render
 from django.urls import path, reverse
 from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.text import capfirst
 from simple_history.admin import SimpleHistoryAdmin
 from unfold.admin import ModelAdmin, TabularInline
@@ -141,10 +143,14 @@ class FormScanInline(TabularInline):
 
 @admin.register(Person)
 class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
+    # The name links to the read-only page, not the edit form: looking a
+    # person up is most of what this changelist is for. list_display_links
+    # is None so Django does not also linkify a second column to the form.
     list_display = (
-        "full_name", "member_no", "membership_status", "mobile_number",
+        "name_link", "member_no", "membership_status", "mobile_number",
         "has_missing_data",
     )
+    list_display_links = None
     list_filter = ("membership_status", "has_missing_data", "consent_given")
     search_fields = ("last_name", "first_name", "nickname", "member_no", "mobile_number")
     readonly_fields = ("status_changed_at", "has_missing_data")
@@ -278,9 +284,17 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
             return ()
         return super().get_inlines(request, obj)
 
+    @admin.display(description="Name", ordering="last_name")
+    def name_link(self, obj):
+        return format_html(
+            '<a href="{}" class="font-medium">{}</a>',
+            reverse("admin:people_person_view", args=[obj.pk]),
+            obj.full_name,
+        )
+
     def get_list_display(self, request):
         if is_chairperson_only(request.user):
-            return ("full_name", "nickname", "mobile_number", "email")
+            return ("name_link", "nickname", "mobile_number", "email")
         return super().get_list_display(request)
 
     def get_list_filter(self, request):
@@ -333,8 +347,102 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
                 self.admin_site.admin_view(self.celebrations_view),
                 name="people_person_celebrations",
             ),
+            path(
+                "<path:object_id>/view/",
+                self.admin_site.admin_view(self.person_view),
+                name="people_person_view",
+            ),
         ]
         return custom + super().get_urls()
+
+    # -- read-only detail ----------------------------------------------
+
+    def person_view(self, request, object_id):
+        """The page clicking a name lands on: read first, edit deliberately.
+
+        Encoding is a minority of what the Secretariat does with a record;
+        looking someone up is the rest, and an edit form is a poor way to
+        read. Editing is one button away for whoever holds the permission,
+        and absent entirely for whoever does not.
+
+        Scoping is not re-implemented here. `get_object` goes through
+        `get_queryset`, so a chairperson asking for a person off their own
+        roster gets the same 404 the changelist would give them, and the
+        five-field restriction below reuses CHAIRPERSON_FIELDS rather than
+        listing fields again -- a second copy of "what a chairperson may
+        see" is how the history page leaked (R18).
+        """
+        person = self.get_object(request, object_id)
+        if person is None:
+            raise Http404("No person matches that id, or it is not yours to view.")
+        if not self.has_view_permission(request, person):
+            raise PermissionDenied
+
+        AccessLog.record(
+            user=request.user,
+            person=person,
+            ip=request.META.get("REMOTE_ADDR"),
+        )
+
+        chairperson_only = is_chairperson_only(request.user)
+        context = {
+            **self.admin_site.each_context(request),
+            "title": person.full_name,
+            "opts": self.model._meta,
+            "person": person,
+            "chairperson_only": chairperson_only,
+            "can_edit": self.has_change_permission(request, person),
+            "change_url": reverse("admin:people_person_change", args=[person.pk]),
+            "changelist_url": reverse("admin:people_person_changelist"),
+        }
+        if not chairperson_only:
+            context.update(self._person_detail_context(person))
+        return render(request, "admin/people/person/person_view.html", context)
+
+    def _person_detail_context(self, person):
+        """Everything on the page a chairperson does not get (D12).
+
+        Kept out of `person_view` so the chairperson branch is a single
+        `if` that adds nothing, rather than a template full of per-field
+        conditionals where one forgotten `{% if %}` is a disclosure.
+        """
+        memberships = list(
+            person.household_memberships.select_related("household").all()
+        )
+        households = []
+        for membership in memberships:
+            household = membership.household
+            households.append(
+                {
+                    "household": household,
+                    "role": membership.get_role_display(),
+                    "url": reverse(
+                        "admin:people_household_view", args=[household.pk]
+                    ),
+                    "members": [
+                        {
+                            "person": other.person,
+                            "role": other.get_role_display(),
+                            "url": reverse(
+                                "admin:people_person_view", args=[other.person_id]
+                            ),
+                            "is_this_person": other.person_id == person.pk,
+                        }
+                        for other in household.members.select_related("person").all()
+                    ],
+                }
+            )
+        return {
+            "households": households,
+            "committees": list(
+                CommitteeMembership.objects.active()
+                .filter(person=person)
+                .select_related("committee", "function")
+            ),
+            "missing_labels": [
+                MISSING_FIELD_LABELS[field] for field in person.missing_fields
+            ],
+        }
 
     # -- celebrations (spec 7.1) ---------------------------------------
 
@@ -509,6 +617,68 @@ class HouseholdPersonInline(TabularInline):
 
 @admin.register(Household)
 class HouseholdAdmin(ModelAdmin):
-    list_display = ("name", "date_of_marriage")
+    list_display = ("name_link", "date_of_marriage")
+    list_display_links = None
     search_fields = ("name",)
     inlines = (HouseholdPersonInline,)
+
+    @admin.display(description="Household", ordering="name")
+    def name_link(self, obj):
+        return format_html(
+            '<a href="{}" class="font-medium">{}</a>',
+            reverse("admin:people_household_view", args=[obj.pk]),
+            obj.name,
+        )
+
+    def get_urls(self):
+        custom = [
+            path(
+                "<path:object_id>/view/",
+                self.admin_site.admin_view(self.household_view),
+                name="people_household_view",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def household_view(self, request, object_id):
+        """A household read as a family rather than as a form.
+
+        No chairperson branch here, unlike PersonAdmin: the Chairperson
+        group holds no view_household permission at all, so they never
+        reach this page. If that ever changes, this needs the same
+        five-field treatment PersonAdmin has -- households are exactly the
+        kind of thing D12 withholds.
+        """
+        household = self.get_object(request, object_id)
+        if household is None:
+            raise Http404("No household matches that id.")
+        if not self.has_view_permission(request, household):
+            raise PermissionDenied
+
+        members = [
+            {
+                "person": member.person,
+                "role": member.get_role_display(),
+                "url": reverse("admin:people_person_view", args=[member.person_id]),
+            }
+            for member in household.members.select_related("person").all()
+        ]
+        # One entry naming the household, not one per member (spec 7.6).
+        AccessLog.record(
+            user=request.user,
+            report=f"household — {household.name}"[:120],
+            ip=request.META.get("REMOTE_ADDR"),
+        )
+        context = {
+            **self.admin_site.each_context(request),
+            "title": household.name,
+            "opts": self.model._meta,
+            "household": household,
+            "members": members,
+            "can_edit": self.has_change_permission(request, household),
+            "change_url": reverse(
+                "admin:people_household_change", args=[household.pk]
+            ),
+            "changelist_url": reverse("admin:people_household_changelist"),
+        }
+        return render(request, "admin/people/household/household_view.html", context)

@@ -1,0 +1,169 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% comment %}
+The page clicking a name lands on. Read first; edit deliberately.
+
+Two things shape the layout. Contact details sit at the top because
+looking up a number is the single commonest reason anyone opens a member's
+record. And missing fields are rendered as a banner rather than as blank
+rows -- half the register is incomplete by design (spec 6.3), so an
+absence here is a task, not an empty cell.
+
+Everything a chairperson may not see (D12) is inside one
+{% if not chairperson_only %} block rather than scattered per field. One
+forgotten condition in a per-field version is a disclosure, and that is
+exactly how the history page leaked (R18).
+{% endcomment %}
+
+{% block content %}
+<div class="max-w-4xl">
+
+    <div class="flex items-start justify-between gap-4 mb-6">
+        <a href="{{ changelist_url }}" class="text-sm text-base-500 dark:text-base-400 hover:underline">
+            &larr; People
+        </a>
+        {% if can_edit %}
+            <a href="{{ change_url }}"
+               class="px-4 py-2 rounded bg-primary-600 text-white text-sm font-medium shrink-0">
+                Edit
+            </a>
+        {% endif %}
+    </div>
+
+    {# -- who this is ------------------------------------------------- #}
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold leading-tight">
+            {{ person.full_name }}{% if person.nickname %}<span class="text-base-400 dark:text-base-500 font-normal"> &ldquo;{{ person.nickname }}&rdquo;</span>{% endif %}
+        </h1>
+        <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-500 dark:text-base-400">
+            {% if person.member_no %}<span class="font-mono">{{ person.member_no }}</span><span aria-hidden="true">&middot;</span>{% endif %}
+            <span>{{ person.get_membership_status_display }}</span>
+        </div>
+    </header>
+
+    {# Contact first: looking up a number is why this page gets opened. #}
+    <section class="mb-6 p-4 rounded border border-base-200 dark:border-base-700">
+        <dl class="grid gap-3 sm:grid-cols-2">
+            <div>
+                <dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Mobile</dt>
+                <dd>{% if person.mobile_number %}<a class="underline" href="tel:{{ person.mobile_number }}">{{ person.mobile_number }}</a>{% else %}<span class="text-base-400 dark:text-base-500">Not on file</span>{% endif %}</dd>
+            </div>
+            <div>
+                <dt class="text-xs uppercase text-base-400 dark:text-base-500 mb-1">Email</dt>
+                <dd>{% if person.email %}<a class="underline break-all" href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}<span class="text-base-400 dark:text-base-500">Not on file</span>{% endif %}</dd>
+            </div>
+        </dl>
+    </section>
+
+    {% if not chairperson_only %}
+
+        {% if missing_labels %}
+            <section class="mb-6 p-4 rounded border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200">
+                <h2 class="text-sm font-semibold mb-1">Needs follow-up</h2>
+                <p class="text-sm">Still to ask for: {{ missing_labels|join:", " }}.</p>
+            </section>
+        {% endif %}
+
+        {# -- family --------------------------------------------------- #}
+        {% for entry in households %}
+            <section class="mb-6">
+                <div class="flex items-baseline justify-between gap-4 mb-2">
+                    <h2 class="text-lg font-semibold">
+                        <a href="{{ entry.url }}" class="hover:underline">{{ entry.household.name }}</a>
+                    </h2>
+                    <span class="text-sm text-base-500 dark:text-base-400">{{ entry.role }}</span>
+                </div>
+                {% if entry.household.date_of_marriage %}
+                    <p class="text-sm text-base-500 dark:text-base-400 mb-2">
+                        Married {{ entry.household.date_of_marriage|date:"j F Y" }}
+                    </p>
+                {% endif %}
+                <ul class="text-sm">
+                    {% for member in entry.members %}
+                        <li class="flex justify-between gap-4 py-2 border-b border-base-200 dark:border-base-700">
+                            <span>
+                                {% if member.is_this_person %}
+                                    <span class="text-base-500 dark:text-base-400">{{ member.person.full_name }}</span>
+                                {% else %}
+                                    <a href="{{ member.url }}" class="underline">{{ member.person.full_name }}</a>
+                                {% endif %}
+                            </span>
+                            <span class="text-base-500 dark:text-base-400 whitespace-nowrap">{{ member.role }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        {% endfor %}
+
+        {# -- service -------------------------------------------------- #}
+        <section class="mb-6">
+            <h2 class="text-lg font-semibold mb-2">Committees</h2>
+            {% if committees %}
+                <ul class="text-sm">
+                    {% for membership in committees %}
+                        <li class="flex justify-between gap-4 py-2 border-b border-base-200 dark:border-base-700">
+                            <span>
+                                {{ membership.committee.name }}
+                                {% if membership.function %}<span class="text-base-500 dark:text-base-400">&middot; {{ membership.function.name }}</span>{% endif %}
+                            </span>
+                            <span class="text-base-500 dark:text-base-400 whitespace-nowrap">
+                                {{ membership.get_role_display }} since {{ membership.date_joined|date:"M Y" }}
+                            </span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-sm text-base-500 dark:text-base-400">Serving on none.</p>
+            {% endif %}
+        </section>
+
+        {# -- the rest of the record ----------------------------------- #}
+        <section class="mb-6 grid gap-6 sm:grid-cols-2">
+            <div>
+                <h2 class="text-xs uppercase text-base-400 dark:text-base-500 mb-2">Personal</h2>
+                <dl class="text-sm space-y-1">
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Born</dt><dd>{{ person.date_of_birth|date:"j F Y"|default:"—" }}</dd></div>
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Place</dt><dd>{{ person.place_of_birth|default:"—" }}</dd></div>
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Sex</dt><dd>{{ person.get_gender_display|default:"—" }}</dd></div>
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Civil status</dt><dd>{{ person.get_civil_status_display|default:"—" }}</dd></div>
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Nationality</dt><dd>{{ person.nationality|default:"—" }}</dd></div>
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Address</dt><dd>{{ person.home_address|default:"—" }}</dd></div>
+                </dl>
+            </div>
+            <div>
+                <h2 class="text-xs uppercase text-base-400 dark:text-base-500 mb-2">Record</h2>
+                <dl class="text-sm space-y-1">
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Form filed</dt><dd>{{ person.date_filed|date:"j F Y"|default:"—" }}</dd></div>
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Member since</dt><dd>{{ person.date_became_member|date:"j F Y"|default:"—" }}</dd></div>
+                    <div class="flex gap-2">
+                        <dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Consent</dt>
+                        <dd>{% if person.consent_given %}Signed {{ person.consent_date|date:"j F Y" }}{% if person.consent_version %} ({{ person.consent_version }}){% endif %}{% else %}<span class="text-amber-700 dark:text-amber-400">Not signed</span>{% endif %}</dd>
+                    </div>
+                    <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Greetings</dt><dd>{% if person.greeting_opt_out %}Opted out{% else %}Included{% endif %}</dd></div>
+                </dl>
+
+                <h2 class="text-xs uppercase text-base-400 dark:text-base-500 mt-4 mb-2">Emergency contact</h2>
+                <dl class="text-sm space-y-1">
+                    {% if person.emergency_contact_name %}
+                        <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Name</dt><dd>{{ person.emergency_contact_name }}{% if person.emergency_contact_relationship %} ({{ person.emergency_contact_relationship }}){% endif %}</dd></div>
+                        <div class="flex gap-2"><dt class="text-base-500 dark:text-base-400 w-28 shrink-0">Number</dt><dd>{{ person.emergency_contact_number|default:"—" }}</dd></div>
+                    {% else %}
+                        <p class="text-base-500 dark:text-base-400">Nobody on file.</p>
+                    {% endif %}
+                </dl>
+            </div>
+        </section>
+
+        {% if person.notes or person.follow_up_notes %}
+            <section class="mb-6">
+                <h2 class="text-xs uppercase text-base-400 dark:text-base-500 mb-2">Notes</h2>
+                {% if person.follow_up_notes %}<p class="text-sm whitespace-pre-line mb-2">{{ person.follow_up_notes }}</p>{% endif %}
+                {% if person.notes %}<p class="text-sm whitespace-pre-line">{{ person.notes }}</p>{% endif %}
+            </section>
+        {% endif %}
+
+    {% endif %}
+
+</div>
+{% endblock %}
