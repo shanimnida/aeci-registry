@@ -1,21 +1,35 @@
-Django>=5.0,<6.0
-psycopg[binary]>=3.1
-django-environ>=0.11
-django-simple-history>=3.5
-django-storages>=1.14
-# AEGIS admin theme. Pinned exactly: 0.104.1 is built against Django>=5.2
-# (we run 5.2.17) and requires Python>=3.12 (we run 3.12.3) — a loose range
-# risks a future release drifting off either floor.
+# Pinned exactly, all of them, as of 2026-08-24.
+#
+# They were not, and three Render builds failed in a row with "Exited with
+# status 1" on commits that changed no dependency. An unpinned requirement
+# means the build resolves whatever is newest at build time, so a release
+# published by somebody else can break a deploy with no commit from this
+# church at all -- and the failure arrives days after the change that
+# "caused" it, which is the worst kind to diagnose. django-unfold and
+# openpyxl were already pinned for exactly this reason; the argument was
+# never specific to them.
+#
+# To upgrade: change one line, run the suite, deploy. That is the whole
+# process, and it is meant to be a decision rather than a side effect.
+Django==5.2.17
+psycopg[binary]==3.3.4
+django-environ==0.14.0
+django-simple-history==3.13.0
+django-storages==1.14.6
+
+# AEGIS admin theme. 0.104.1 is built against Django>=5.2 (we run 5.2.17)
+# and requires Python>=3.12 (we run 3.12.3).
 django-unfold==0.104.1
-boto3>=1.34
-Pillow>=10.2
+
+boto3==1.43.72
+Pillow==12.3.0
+
 # Reads/writes the .xlsx member profiling import (imports/spreadsheet.py).
-# Pinned exactly, matching the version this app was built and tested
-# against -- a loose range risks a future release changing cell-type
-# handling (imports/spreadsheet.py's _normalize_cell leans on today's
-# behaviour for dates, bools and numbers) out from under the import path.
+# imports/spreadsheet.py's _normalize_cell leans on this version's handling
+# of dates, bools and numbers.
 openpyxl==3.1.5
-gunicorn>=21.2
-whitenoise>=6.6
-pytest>=8.0
-pytest-django>=4.8
+
+gunicorn==26.0.0
+whitenoise==6.12.0
+pytest==9.1.1
+pytest-django==4.14.0
