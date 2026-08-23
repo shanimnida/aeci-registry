@@ -286,7 +286,7 @@ rows, so the layer is optional.
 | `committee` | FK → Committee | |
 | `person` | FK → Person | |
 | `function` | FK → CommitteeFunction | null |
-| `role` | CharField, choices | `CHAIRPERSON`, `CO_CHAIR`, `MEMBER`, `OVERSIGHT` |
+| `role` | CharField, choices | `CHAIRPERSON`, `CO_CHAIR`, `SECRETARY`, `MEMBER`, `OVERSIGHT`, `EX_OFFICIO` |
 | `date_joined` | DateField | |
 | `date_left` | DateField | null — active while null |
 
@@ -297,7 +297,7 @@ admin form errors. Rule 1 is a soft warning only — see the amendment below.
    form prints "select up to TWO (2) committees you wish to be part of," and AEGIS
    counts a person's active memberships with `role=MEMBER` on committees where
    `is_self_selectable=True` against that limit. Appointed roles (`CHAIRPERSON`,
-   `CO_CHAIR`, `OVERSIGHT`) are exempt — otherwise chairing Grievance would consume
+   `CO_CHAIR`, `SECRETARY`, `OVERSIGHT`, `EX_OFFICIO`) are exempt — otherwise chairing Grievance would consume
    one of Diego's two picks. **This used to be a hard refusal — a third such
    membership could not be saved.** It no longer is. Of the first thirty profiling
    forms collected, four (`IMG_5874`, `IMG_5885`, `IMG_5893`, `IMG_5894`) ticked
@@ -310,9 +310,44 @@ admin form errors. Rule 1 is a soft warning only — see the amendment below.
    admin and on the import review screen), but it never blocks the save.
 2. **One active chairperson per committee — hard.** Two people simultaneously
    chairing the same committee is structurally incoherent, not merely against
-   policy, so this still refuses.
+   policy, so this still refuses. **The same rule now covers `SECRETARY`**
+   (added 2026-08-23): a committee keeps one set of minutes, so it has one
+   secretary at a time. Both are held in `SOLE_OFFICE_ROLES`.
 3. `function`, if set, must belong to `committee`.
 4. `OVERSIGHT` requires an active Board `Appointment` for that person.
+
+#### 3.3.1 The committee secretary, and the Secretariat seat
+
+Added 2026-08-23 at the church's request: every committee keeps its own
+secretary, and every committee secretary also sits on the **Secretariat
+committee**.
+
+`SECRETARY` is an office and behaves like `CHAIRPERSON` — one at a time, hard
+refused (rule 2), exempt from the volunteered-committee count (rule 1).
+
+`EX_OFFICIO` ("Member by office") is the seat on the Secretariat committee that
+follows from holding a secretary post elsewhere. It exists as its own role
+rather than being recorded as `MEMBER` because the Secretariat committee *is*
+self-selectable: a `MEMBER` seat there would count against the two-committee
+line, so anyone who ticked two boxes and also held a secretary post would trip
+the overflow warning every time they were recorded. Unlike the two offices it
+carries no uniqueness rule — twelve secretaries all sit on one Secretariat.
+
+**AEGIS prompts; it does not enrol.** Recording someone as a committee
+secretary shows a message naming the Secretariat seat and linking to the form
+that records it, in the same shape as the duplicate-person warning and the
+committee-cap warning. It never creates the membership itself, because an
+auto-created row would also have to be auto-*ended* when the secretary's term
+finished, and that is the software quietly editing someone's service history
+(D8).
+
+**Two things called Secretariat.** The Secretariat *committee* — one of the
+twelve, tickable on the profiling form — and the Secretariat *permission group*
+in `core/groups.py`, which grants create and edit rights over `Person` records.
+They share a name and nothing else. Sitting on the committee grants no access
+to anything; group membership is assigned by ICT when a login is created. This
+is worth stating because twelve people are about to be on the committee, and
+the assumption that they can therefore edit the register is an easy one to make.
 
 **`Position`** — church-level offices, distinct from committees.
 

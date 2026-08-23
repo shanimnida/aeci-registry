@@ -843,3 +843,50 @@ Residual (reported, not fixed): the duplicate rows this bug already wrote to pro
   imports/services.py's possible_duplicate_warning) still compares first_name exactly, so it would
   also miss this pair; worth widening with the same token comparison in the same pass as any merge
   work.
+
+=== A SECRETARY ON EVERY COMMITTEE (484 tests) ===
+Requested 2026-08-23: "add a secretary per committee, also all secretaries per committee are the
+members of secretariat committee unless someone volunteers to be a member".
+
+Ruling: R47 — TWO roles added, not one. SECRETARY is the office asked for. EX_OFFICIO
+  ("Member by office") is the seat on the Secretariat committee that follows from holding it, and
+  it exists because the user spotted the consequence I had not: the Secretariat committee IS
+  self-selectable, so recording that seat as MEMBER would count it against the profiling form's
+  "select up to TWO (2)" — and anyone who ticked two boxes AND held a secretary post would trip the
+  overflow warning every single time they were recorded. Their words: "if you count it it will
+  automatically flag someone who has 2 committees, that and the secretariat." Exempting only the
+  SECRETARY role would have fixed half of it. Both are in APPOINTED_ROLES.
+  Cost if wrong: a role the church never uses sits in the enum; the overflow warning stays quiet
+  for a seat somebody records as EX_OFFICIO when they meant MEMBER.
+
+Ruling: R48 — one active secretary per committee, hard refused, at the user's choice. Generalised
+  _check_single_chairperson to a SOLE_OFFICE_ROLES tuple rather than copying it, so the message
+  names whichever office clashes. Reasoning matches spec 3.3 rule 2: a committee keeps one set of
+  minutes, so two simultaneous secretaries is structurally incoherent rather than merely against
+  policy the way the two-committee cap was (R32). EX_OFFICIO deliberately carries NO uniqueness
+  rule — it is a seat, not an office, and twelve secretaries all sit on one Secretariat.
+
+Ruling: R49 — "all secretaries are members of Secretariat" is implemented as a PROMPT, not as an
+  automatic enrolment, at the user's choice from three options. Recording a committee secretary
+  shows a message naming the Secretariat seat with a link that opens the add form prefilled. Same
+  posture as the duplicate warning, the committee cap, and spec 7.2's children ageing out: the
+  software surfaces the rule, a human records the decision (D8). The argument that settled it is
+  the back half nobody asks about — an auto-created row would also have to be auto-ENDED when the
+  secretary's term finished, and that is the software quietly editing someone's service history.
+  No prompt for the Secretariat's own secretary, nor for anyone already on it.
+  Cost if wrong: a volunteer ignores the prompt and the Secretariat roster is incomplete — visible
+  on the committee overview, which now flags a missing secretary the way it flags a missing chair.
+
+Ruling: R50 — raised with the user rather than discovered later: "Secretariat" now names two
+  different things in a system where twelve people are about to be on one of them. The Secretariat
+  *committee* is one of the twelve on the profiling form. The Secretariat *group* in core/groups.py
+  is what grants create and edit rights over Person records. They share a name and nothing else,
+  and sitting on the committee grants no access whatsoever. Documented in spec 3.3.1 and in a
+  comment on SECRETARIAT_COMMITTEE_CODE, because the assumption that committee membership implies
+  register access is an easy one to make and the pressure to "just grant it" will follow.
+
+Also noted, not acted on: adding a Secretary office to all twelve committees is a GOVERNANCE
+change — the committee structure comes from the Board document of 5 July 2026. AEGIS can record
+whatever the Board decides; it should not be the thing that decided it. Flagged to the user at the
+time of the request. data/officers.csv accepts role=SECRETARY with no change, so the ICT Committee
+can seed them once the Board has named them.

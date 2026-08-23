@@ -116,8 +116,21 @@ BOARD_POSITION_CODES = ("board-member", "board-chairperson", "pastor")
 class CommitteeRole(models.TextChoices):
     CHAIRPERSON = "CHAIRPERSON", "Chairperson"
     CO_CHAIR = "CO_CHAIR", "Co-Chair"
+    # Added 2026-08-23 at the church's request: every committee keeps its own
+    # secretary. An office, like Chairperson -- one at a time, hard refused.
+    SECRETARY = "SECRETARY", "Secretary"
     MEMBER = "MEMBER", "Member"
     OVERSIGHT = "OVERSIGHT", "Board Oversight"
+    # Added alongside SECRETARY, and not decoration. A committee secretary
+    # sits on the Secretariat committee by virtue of their office, not
+    # because they volunteered for it -- and Secretariat is self-selectable,
+    # so recording that seat as MEMBER would count it against the profiling
+    # form's "select up to TWO (2)" and warn about anyone holding a
+    # secretary post plus two ticked committees, every time. EX_OFFICIO says
+    # what the seat actually is. Unlike Chairperson and Secretary it is not
+    # an office and carries no uniqueness rule: twelve secretaries all sit
+    # on one Secretariat.
+    EX_OFFICIO = "EX_OFFICIO", "Member by office"
 
 
 class CommitteeMembershipQuerySet(models.QuerySet):
@@ -136,12 +149,22 @@ class CommitteeMembership(TimeStampedModel):
     # cap.
     SELF_SELECTED_LIMIT = 2
 
-    # Appointed roles do not consume a self-selected slot.
+    # Appointed roles do not consume a self-selected slot. The form's
+    # "select up to TWO (2)" asks what a member volunteers for; it says
+    # nothing about what the Board or a committee appoints them to.
     APPOINTED_ROLES = (
         CommitteeRole.CHAIRPERSON,
         CommitteeRole.CO_CHAIR,
+        CommitteeRole.SECRETARY,
         CommitteeRole.OVERSIGHT,
+        CommitteeRole.EX_OFFICIO,
     )
+
+    # Offices only one person may hold on a committee at a time. Both are
+    # hard refusals: two people simultaneously chairing -- or keeping the
+    # minutes of -- the same committee is structurally incoherent, not
+    # merely against policy the way the two-committee cap was (R32).
+    SOLE_OFFICE_ROLES = (CommitteeRole.CHAIRPERSON, CommitteeRole.SECRETARY)
 
     committee = models.ForeignKey(
         Committee, on_delete=models.PROTECT, related_name="memberships"
@@ -269,18 +292,26 @@ class CommitteeMembership(TimeStampedModel):
         return None
 
     def _check_single_chairperson(self):
-        if self.role != CommitteeRole.CHAIRPERSON or self._has_ended():
+        """One holder at a time for each of SOLE_OFFICE_ROLES.
+
+        Named for the chairperson rule it started as (spec 3.3 rule 2);
+        it now covers Secretary on the same reasoning, which is why the
+        message names whichever office is clashing rather than hardcoding
+        one.
+        """
+        if self.role not in self.SOLE_OFFICE_ROLES or self._has_ended():
             return
         clash = (
             CommitteeMembership.objects.active()
-            .filter(committee=self.committee, role=CommitteeRole.CHAIRPERSON)
+            .filter(committee=self.committee, role=self.role)
             .exclude(pk=self.pk)
             .first()
         )
         if clash:
             raise ValidationError(
-                f"{clash.person.full_name} is already Chairperson of "
-                f"{self.committee.name}. End that role first."
+                f"{clash.person.full_name} is already "
+                f"{self.get_role_display()} of {self.committee.name}. "
+                "End that role first."
             )
 
     def _check_oversight_is_on_the_board(self):

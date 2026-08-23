@@ -68,6 +68,16 @@ changelist stays one click away ("View as a table") for adding and editing
                 {% endif %}
             </div>
 
+            <div class="flex items-center gap-2 {% if card.missing_secretary %}text-amber-800 dark:text-amber-300{% else %}text-base-700 dark:text-base-300{% endif %}">
+                {% if card.missing_secretary %}
+                    <span class="material-symbols-outlined md-18 shrink-0" aria-hidden="true">warning</span>
+                    <span>No secretary assigned</span>
+                {% else %}
+                    <span class="material-symbols-outlined md-18 shrink-0 text-base-400 dark:text-base-500" aria-hidden="true">person</span>
+                    <span><span class="text-base-400 dark:text-base-500">Secretary:</span> {{ card.secretary_name }}</span>
+                {% endif %}
+            </div>
+
             <div class="flex items-center gap-2 text-base-700 dark:text-base-300">
                 <span class="material-symbols-outlined md-18 shrink-0 text-base-400 dark:text-base-500" aria-hidden="true">person</span>
                 {% if card.co_chair_names %}

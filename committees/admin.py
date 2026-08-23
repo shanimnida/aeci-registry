@@ -4,7 +4,8 @@ from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db.models.constants import LOOKUP_SEP
 from django.shortcuts import get_object_or_404, render
-from django.urls import path
+from django.urls import path, reverse
+from django.utils.html import format_html
 from simple_history.admin import SimpleHistoryAdmin
 from unfold.admin import ModelAdmin, TabularInline
 
@@ -22,20 +23,33 @@ from records.models import AccessLog
 # to the same five fields people.admin.PersonAdmin permits.
 CHAIRPERSON_OWN_FIELDS = ("committee", "role", "function", "date_joined", "date_left")
 
+# The committee every committee secretary also sits on (requested
+# 2026-08-23). Note this is the Secretariat *committee* -- one of the twelve
+# on the profiling form -- and NOT the Secretariat permission group in
+# core/groups.py, which is what grants edit rights over Person records. The
+# two share a name and nothing else; sitting on the committee grants no
+# access to anything.
+SECRETARIAT_COMMITTEE_CODE = "secretariat"
+
 # Roster sections on the overview and detail screens, in the order they are
 # shown. Members last: it is usually the largest, least-special group.
 ROSTER_ROLE_ORDER = (
     ("Chairperson", CommitteeRole.CHAIRPERSON),
     ("Co-Chair", CommitteeRole.CO_CHAIR),
+    ("Secretary", CommitteeRole.SECRETARY),
     ("Board Oversight", CommitteeRole.OVERSIGHT),
     ("Members", CommitteeRole.MEMBER),
+    ("Members by office", CommitteeRole.EX_OFFICIO),
 )
 
-# Only "no chairperson" and "no oversight" are gaps the church's own Board
-# minutes track (see the overview/detail templates' brief) -- an empty
-# Co-Chair or Members section is unremarkable and shown plainly instead.
+# Gaps the church's own Board minutes track (see the overview/detail
+# templates' brief). Secretary joined them 2026-08-23, when the church made
+# it an office on every committee -- an unfilled one is now a real vacancy,
+# the same way an unfilled chair is. An empty Co-Chair, Members or Members
+# by office section is unremarkable and shown plainly instead.
 ROSTER_GAP_TEXT = {
     CommitteeRole.CHAIRPERSON: "No chairperson assigned",
+    CommitteeRole.SECRETARY: "No secretary assigned",
     CommitteeRole.OVERSIGHT: "No Board Oversight assigned",
 }
 
@@ -65,6 +79,7 @@ def overview_committee_card(committee, memberships):
     CommitteeMembershipAdmin.get_queryset) and to just this committee.
     """
     chair = next((m for m in memberships if m.role == CommitteeRole.CHAIRPERSON), None)
+    secretary = next((m for m in memberships if m.role == CommitteeRole.SECRETARY), None)
     co_chairs = [m for m in memberships if m.role == CommitteeRole.CO_CHAIR]
     oversight = [m for m in memberships if m.role == CommitteeRole.OVERSIGHT]
     return {
@@ -72,8 +87,10 @@ def overview_committee_card(committee, memberships):
         "count": len(memberships),
         "is_empty": not memberships,
         "missing_chair": chair is None,
+        "missing_secretary": secretary is None,
         "missing_oversight": not oversight,
         "chair_name": overview_display_name(chair.person) if chair else "",
+        "secretary_name": overview_display_name(secretary.person) if secretary else "",
         "co_chair_names": [overview_display_name(m.person) for m in co_chairs],
         "oversight_names": [overview_display_name(m.person) for m in oversight],
     }
@@ -146,7 +163,58 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
                 "paper form if this looks wrong.",
                 level=messages.WARNING,
             )
+        self._prompt_for_secretariat_seat(request, obj)
         super().save_model(request, obj, form, change)
+
+    def _prompt_for_secretariat_seat(self, request, obj):
+        """Tell whoever recorded a committee secretary that they also sit on
+        the Secretariat committee, and hand them the link to record it.
+
+        Requested 2026-08-23: "all secretaries per committee are the members
+        of secretariat committee". AEGIS surfaces the rule and a human
+        records the seat -- it does not create the membership itself. Same
+        posture as the duplicate warning above, as the committee cap, and as
+        spec 7.2's children ageing out of CHILD: the software prompts, a
+        person decides (D8). An auto-created row would also have to be
+        auto-ENDED when the secretary's term finishes, which is the software
+        quietly editing someone's service history.
+
+        Nothing is prompted for the Secretariat's own secretary, who is
+        already on it.
+        """
+        if obj.role != CommitteeRole.SECRETARY or obj._has_ended():
+            return
+        if obj.committee.code == SECRETARIAT_COMMITTEE_CODE:
+            return
+        secretariat = Committee.objects.filter(code=SECRETARIAT_COMMITTEE_CODE).first()
+        if secretariat is None:
+            return
+        already = (
+            CommitteeMembership.objects.active()
+            .filter(person=obj.person, committee=secretariat)
+            .exists()
+        )
+        if already:
+            return
+        add_url = (
+            f"{reverse('admin:committees_committeemembership_add')}"
+            f"?committee={secretariat.pk}&person={obj.person.pk}"
+            f"&role={CommitteeRole.EX_OFFICIO}&date_joined={obj.date_joined:%Y-%m-%d}"
+        )
+        self.message_user(
+            request,
+            format_html(
+                "{} is now {} of {}, so they also sit on the {} committee. "
+                'Not added automatically — <a href="{}">record that seat</a> '
+                "if the church wants it on the roster.",
+                obj.person.full_name,
+                obj.get_role_display(),
+                obj.committee.name,
+                secretariat.name,
+                add_url,
+            ),
+            level=messages.INFO,
+        )
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
