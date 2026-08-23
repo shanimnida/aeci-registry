@@ -1290,3 +1290,63 @@ Ruling: R83 — the account screen now shows whether a login is joined to a Pers
   where anybody looks, so the state is on the form beside the group that makes it matter, and on
   the changelist as a column -- with a NOT LINKED warning naming the fix when the account is a
   Chairperson.
+
+=== HOUSEHOLD MERGING, MIDDLE INITIALS, AND SEVEN UI FIXES (697 tests) ===
+
+Ruling: R84 — households can now be merged, on the same screen as people. The church asked "how do
+  i merge the reyes family then", and fixing the importer does nothing about the pairs it already
+  wrote. Two signals: sharing a MEMBER is near-certain (it is exactly what the bug produced, since
+  the second parent's form matched the same children into a second household), and same name PLUS
+  same address is offered as weaker, stated as such. Name alone is deliberately not a signal --
+  "Reyes Family" is common here and flagging every pair would bury the real ones.
+  Merging moves the members across and fills only the kept household's GAPS; its own address and
+  wedding date are never overruled, for the same reason the person merge never copies field values.
+  Nobody is deleted by a household merge, and there is a test saying so.
+
+Ruling: R85 — a middle INITIAL now matches the middle name it stands for. Found in the register:
+  the Til-Adan household had eight members where five people live, because the parent's form gave
+  "Johnson A. Til-adan" and the child's own form gave "Johnson Angel Til-adan", and comparing "a."
+  with "angel" as different words made them two children. Three pairs in one family. The paper form
+  asks for a middle name and half the parents write the initial, so this is the ordinary case, not
+  an edge one.
+  The widening is bounded and that is what makes it safe: the FIRST given name must still agree
+  exactly, the surname must agree, and the date of birth must be present and identical on both
+  sides. An initial only ever stands in for a middle name that is otherwise missing or spelled out,
+  and a DIFFERENT letter is still a different middle name.
+
+Ruling: R86 — near-miss spellings are FOUND but never linked. "Jonhmar" and "Johnmar" are one child
+  written twice, and no rule can be sure of that -- so a first name one edit away (one insertion,
+  deletion, substitution, or two adjacent letters swapped) is shown on the duplicates screen with
+  its reason stated as the weaker one, and a person decides. Restricted to words of four letters or
+  more, because below that a single edit is most of the word and "Ana"/"Ann" are two real names.
+  Every pair on that screen now carries a sentence saying WHY it is there, which is the difference
+  between a list to work through and a list to be suspicious of.
+
+Ruling: R87 — children are editable on their parent's own record. Asked for as "the children
+  section got removed", though it had never been there: the household inline shows which household
+  somebody is IN, which is a different question, and `Person.guardian` -- the relationship the
+  importer fills for every child it creates -- had no editing surface at all. Added as an inline on
+  that FK, hidden from chairpersons like every other inline (D12). Note this changed the admin's
+  formset prefixes: six existing tests posted change forms and started bouncing at 200 until they
+  included the new "wards" management form. That is the correct failure, and it is why they assert
+  a redirect rather than a status code.
+
+Ruling: R88 — a login is linked to its member record ON THE ACCOUNT PAGE now. The old instruction
+  ("open this person's record under Registry → People and set the User field in the Login section")
+  was long, and once clicking a name opened a read-only page it was also WRONG. `Person.user` is a
+  OneToOne declared on Person, so this is a plain form field written back in save(); people already
+  claimed by another login are not offered, since one person holds one login and offering a taken
+  one only produces a confusing failure.
+
+Ruling: R89 — native form controls follow the theme via `color-scheme`. A <select>'s closed box is
+  styled by CSS but the popup list it opens is drawn by the browser, which ignores Tailwind
+  entirely -- so on a dark page it came up white with pale grey text, and the church reported it as
+  unreadable. `color-scheme` is the property that actually reaches those widgets, and it covers
+  date pickers and scrollbars at the same time. One partial, included by the three custom screens
+  that carry their own controls; Unfold's own widgets already handled it.
+
+Ruling: R90 — the Secretariat roster names the office that put each ex-officio member there:
+  "Rhem Mc Garth Santos — ICT Secretary". A dozen people sit on that committee solely because they
+  are secretary of another one, and a bare name does not say so. Somebody holding two secretary
+  posts has both named; an ordinary member who volunteered reads as an ordinary member, because
+  they did not arrive by way of an office.

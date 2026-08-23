@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 
-from people.models import Person
+from people.models import Household, Person
 
 # What "more complete" means. TRACKED_FIELDS is the church's own answer --
 # it is the list the follow-up queue chases (spec 6.3) -- extended with the
@@ -68,6 +68,7 @@ class DuplicatePair:
     fields: list
     left_attachments: dict
     right_attachments: dict
+    reason: str = "Same surname and a compatible given name."
 
     @property
     def fuller(self):
@@ -121,7 +122,43 @@ def attachments(person) -> dict:
     }
 
 
-def compare(left, right) -> DuplicatePair:
+def _within_one_edit(one: str, other: str) -> bool:
+    """True when two words differ by a single typo.
+
+    One insertion, deletion or substitution, or two adjacent letters
+    swapped -- "Jonhmar" and "Johnmar", which is what a hand copying a name
+    off a form actually produces.
+
+    Used ONLY as a finder: a near-miss is shown to a human, never linked
+    automatically. Restricted to words of four letters or more, because
+    below that a single edit is most of the word and "Ana"/"Ann" are two
+    real names.
+    """
+    one, other = one.lower(), other.lower()
+    if one == other:
+        return False
+    if min(len(one), len(other)) < 4 or abs(len(one) - len(other)) > 1:
+        return False
+    if len(one) == len(other):
+        differing = [i for i in range(len(one)) if one[i] != other[i]]
+        if len(differing) == 1:
+            return True
+        if len(differing) == 2:
+            first, second = differing
+            return (
+                second == first + 1
+                and one[first] == other[second]
+                and one[second] == other[first]
+            )
+        return False
+    shorter, longer = sorted((one, other), key=len)
+    for position in range(len(longer)):
+        if longer[:position] + longer[position + 1 :] == shorter:
+            return True
+    return False
+
+
+def compare(left, right, reason=None) -> DuplicatePair:
     fields = []
     for field_name in COMPLETENESS_FIELDS:
         left_value = _display(left, field_name)
@@ -143,6 +180,7 @@ def compare(left, right) -> DuplicatePair:
         fields=fields,
         left_attachments=attachments(left),
         right_attachments=attachments(right),
+        **({"reason": reason} if reason else {}),
     )
 
 
@@ -159,8 +197,6 @@ def find_duplicate_pairs(limit=None) -> list:
     the seeded officers have none by construction, so requiring one would
     miss precisely the duplicates that actually occur.
     """
-    from imports.services import _given_name_tokens, _names_are_compatible
-
     people = list(
         Person.objects.all()
         .order_by("last_name", "first_name", "pk")
@@ -174,14 +210,42 @@ def find_duplicate_pairs(limit=None) -> list:
     for group in by_surname.values():
         for index, left in enumerate(group):
             for right in group[index + 1 :]:
-                if _names_are_compatible(
-                    _given_name_tokens(left.first_name, left.middle_name),
-                    _given_name_tokens(right.first_name, right.middle_name),
-                ):
-                    pairs.append(compare(left, right))
-                    if limit and len(pairs) >= limit:
-                        return pairs
+                reason = _person_pair_reason(left, right)
+                if reason is None:
+                    continue
+                pairs.append(compare(left, right, reason=reason))
+                if limit and len(pairs) >= limit:
+                    return pairs
     return pairs
+
+
+def _person_pair_reason(left, right):
+    """Why these two might be one person, or None.
+
+    Two signals, and the second is deliberately weaker. Compatible names
+    (which now includes a middle INITIAL standing for the middle name it
+    abbreviates) is the strong one and is what the importer itself links
+    on. A first name one typo away is a finder only -- "Jonhmar" and
+    "Johnmar" are the same child written twice, and nothing but a person
+    reading them can be sure of that.
+    """
+    from imports.services import _given_name_tokens, _names_are_compatible
+
+    if _names_are_compatible(
+        _given_name_tokens(left.first_name, left.middle_name),
+        _given_name_tokens(right.first_name, right.middle_name),
+    ):
+        return "Same surname and a compatible given name."
+
+    left_first = (left.first_name or "").split()[:1]
+    right_first = (right.first_name or "").split()[:1]
+    if left_first and right_first and _within_one_edit(left_first[0], right_first[0]):
+        return (
+            f"Same surname, and the first names differ by one letter "
+            f"({left_first[0]} / {right_first[0]}) — probably a typo, but "
+            "check before merging."
+        )
+    return None
 
 
 @transaction.atomic
@@ -248,6 +312,148 @@ def merge_into(keep, remove) -> dict:
     moved["scans"] = remove.scans.update(person=keep)
     Person.objects.filter(guardian=remove).update(guardian=keep)
     Person.objects.filter(approved_by=remove).update(approved_by=keep)
+
+    remove.delete()
+    return moved
+
+
+# -- households ---------------------------------------------------------
+#
+# Added 2026-08-24. The duplicate-household bug (see imports/services.py,
+# "the Reyes case") wrote real pairs to the register before it was fixed,
+# and fixing the importer does nothing about those. Merging households is
+# genuinely simpler than merging people: a household holds a name, an
+# address and a wedding date, and everything else about it is its members.
+
+
+@dataclass(frozen=True)
+class HouseholdPair:
+    left: Household
+    right: Household
+    shared: list
+    reason: str
+
+    @property
+    def fuller(self):
+        """The household holding more members, or None on a tie."""
+        left_count = self.left.members.count()
+        right_count = self.right.members.count()
+        if left_count > right_count:
+            return self.left
+        if right_count > left_count:
+            return self.right
+        return None
+
+
+def _household_fields(household) -> list:
+    return [
+        ("Address", household.address or ""),
+        (
+            "Date of marriage",
+            household.date_of_marriage.isoformat() if household.date_of_marriage else "",
+        ),
+        ("Members", str(household.members.count())),
+    ]
+
+
+def find_duplicate_household_pairs(limit=None) -> list:
+    """Households that are probably one family.
+
+    Two signals, and the first is worth far more than the second:
+
+    - **They share a member.** Somebody recorded in both is not a
+      coincidence -- it is exactly what the old bug produced, since the
+      second parent's form matched the same children and added them to a
+      second household. Near-certain.
+    - **Same name and same address, sharing nobody.** Weaker: two unrelated
+      Reyes families can share a surname. It is shown, and said to be the
+      weaker reason, so the reviewer knows to look harder.
+
+    Name alone is deliberately NOT a signal. "Reyes Family" is a common
+    name in this congregation and flagging every pair of them would bury
+    the real ones.
+    """
+    households = list(
+        Household.objects.all().prefetch_related("members__person").order_by("pk")
+    )
+    members = {
+        household.pk: {member.person_id for member in household.members.all()}
+        for household in households
+    }
+
+    pairs = []
+    for index, left in enumerate(households):
+        for right in households[index + 1 :]:
+            shared = members[left.pk] & members[right.pk]
+            if shared:
+                names = list(
+                    Person.objects.filter(pk__in=shared).values_list("pk", flat=True)
+                )
+                reason = (
+                    f"{len(names)} person(s) are recorded in both — that only "
+                    "happens when one family was entered twice."
+                )
+            elif (
+                left.name.strip().lower() == right.name.strip().lower()
+                and left.address.strip()
+                and left.address.strip().lower() == right.address.strip().lower()
+            ):
+                names = []
+                reason = (
+                    "Same name and same address, but no member in common — "
+                    "weaker evidence, so check before merging."
+                )
+            else:
+                continue
+
+            pairs.append(
+                HouseholdPair(
+                    left=left,
+                    right=right,
+                    shared=list(Person.objects.filter(pk__in=names)),
+                    reason=reason,
+                )
+            )
+            if limit and len(pairs) >= limit:
+                return pairs
+    return pairs
+
+
+@transaction.atomic
+def merge_households(keep, remove) -> dict:
+    """Move `remove`'s members onto `keep`, then delete it.
+
+    Fills the kept household's address and wedding date only where it has
+    none -- the same rule the importer follows, and for the same reason:
+    somebody already recorded an answer there and this is not the place to
+    overrule it. A member already in `keep` is dropped rather than moved,
+    since one person sits in a household once.
+    """
+    from people.models import HouseholdMember
+
+    moved = {"members": 0, "dropped": 0, "filled": []}
+
+    already = set(
+        HouseholdMember.objects.filter(household=keep).values_list("person_id", flat=True)
+    )
+    for member in HouseholdMember.objects.filter(household=remove):
+        if member.person_id in already:
+            moved["dropped"] += 1
+            continue
+        member.household = keep
+        member.save(update_fields=["household"])
+        already.add(member.person_id)
+        moved["members"] += 1
+
+    if not keep.address and remove.address:
+        keep.address = remove.address
+        moved["filled"].append("address")
+    if keep.date_of_marriage is None and remove.date_of_marriage is not None:
+        keep.date_of_marriage = remove.date_of_marriage
+        moved["filled"].append("date of marriage")
+    if moved["filled"]:
+        keep.full_clean()
+        keep.save()
 
     remove.delete()
     return moved

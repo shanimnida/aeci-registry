@@ -6,6 +6,7 @@ from unfold.admin import ModelAdmin
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 from core.groups import CHAIRPERSON
+from people.models import Person
 
 # Re-register the stock auth admin with Unfold's ModelAdmin so the account
 # screens (used by ICT to create logins and manage groups — see
@@ -68,6 +69,23 @@ class AegisUserChangeForm(UserChangeForm):
     is machinery standing in front of a simple question.
     """
 
+    # Linking the login to a member record is done HERE, on the screen that
+    # reports it missing. It used to mean going to Registry → People,
+    # finding the person, opening their record and scrolling to a Login
+    # section -- and once clicking a name opened a read-only page, that
+    # instruction was wrong as well as long. `Person.user` is a OneToOne
+    # declared on Person, so this is a plain form field written back in
+    # save() rather than a model field on User.
+    person = forms.ModelChoiceField(
+        queryset=Person.objects.none(),
+        required=False,
+        label="Member record",
+        help_text=(
+            "Who this login belongs to. A Chairperson's screens are scoped by "
+            "this link — without it they sign in and see nothing at all."
+        ),
+    )
+
     class Meta(UserChangeForm.Meta):
         exclude = ("user_permissions",)
         widgets = {"groups": forms.CheckboxSelectMultiple}
@@ -78,6 +96,26 @@ class AegisUserChangeForm(UserChangeForm):
             self.fields["groups"].help_text = (
                 "The role this account holds. Almost everyone has exactly one."
             )
+        # Everybody not already claimed by a different login, plus whoever
+        # this one already points at.
+        available = Person.objects.filter(user__isnull=True)
+        current = getattr(self.instance, "person", None)
+        if current is not None:
+            available = available | Person.objects.filter(pk=current.pk)
+        self.fields["person"].queryset = available.order_by("last_name", "first_name")
+        self.fields["person"].initial = current
+
+    def save(self, commit=True):
+        user = super().save(commit=commit)
+        chosen = self.cleaned_data.get("person")
+        previous = Person.objects.filter(user=user).first()
+        if previous is not None and previous != chosen:
+            previous.user = None
+            previous.save(update_fields=["user"])
+        if chosen is not None and chosen.user_id != user.pk:
+            chosen.user = user
+            chosen.save(update_fields=["user"])
+        return user
 
 
 @admin.register(User)
@@ -100,9 +138,7 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
         "member_record", "is_staff", "is_active",
     )
     list_filter = ("is_staff", "is_active", "groups")
-    readonly_fields = (
-        "last_login", "date_joined", "individual_permissions", "member_record",
-    )
+    readonly_fields = ("last_login", "date_joined", "individual_permissions")
 
     fieldsets = (
         (None, {"fields": ("username", "password")}),
@@ -110,7 +146,7 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
         (
             "Access",
             {
-                "fields": ("is_active", "is_staff", "groups", "member_record"),
+                "fields": ("is_active", "is_staff", "groups", "person"),
                 "description": (
                     "<strong>Staff status</strong> is what lets someone log in "
                     "at all — without it the right password still fails. The "
@@ -176,18 +212,9 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
         if person is not None:
             return f"Linked to {person.full_name}."
 
-        needs_one = obj.groups.filter(name=CHAIRPERSON).exists()
-        if needs_one:
-            return (
-                "NOT LINKED — and this account is a Chairperson, so its screens "
-                "will be empty until it is. Open this person's record under "
-                "Registry → People and set the User field in the Login section."
-            )
-        return (
-            "Not linked to anybody in the register. Fine for an ICT or "
-            "Secretariat account; a Chairperson needs one, or their committee "
-            "screens show nothing."
-        )
+        if obj.groups.filter(name=CHAIRPERSON).exists():
+            return "NOT LINKED — a Chairperson's screens will be empty"
+        return "Not linked"
 
     @admin.display(description="Individual permissions")
     def individual_permissions(self, obj):

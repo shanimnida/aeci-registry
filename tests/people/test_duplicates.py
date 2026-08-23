@@ -302,7 +302,7 @@ def test_an_empty_register_says_so_rather_than_rendering_nothing(client):
 
     body = client.get(duplicates_url()).content.decode()
 
-    assert "No two records look like the same person" in body
+    assert "no two people and no two households" in body
 
 
 @pytest.mark.django_db
@@ -313,3 +313,65 @@ def test_a_nonsense_post_changes_nothing(client, seeded_chair, her_own_form):
 
     assert Person.objects.filter(pk=seeded_chair.pk).exists()
     assert Person.objects.filter(pk=her_own_form.pk).exists()
+
+
+# -- near-miss spellings (2026-08-24) ----------------------------------
+
+
+@pytest.mark.django_db
+def test_a_middle_initial_and_the_spelled_out_name_are_one_pair(db):
+    """The Til-Adan case: the parent's form gave "A.", the child's own form
+    gave "Angel". These are one child written twice."""
+    Person.objects.create(
+        last_name="Til-Adan", first_name="Johnson", middle_name="A."
+    )
+    Person.objects.create(
+        last_name="Til-Adan", first_name="Johnson", middle_name="Angel"
+    )
+
+    pairs = find_duplicate_pairs()
+
+    assert len(pairs) == 1
+    assert "compatible given name" in pairs[0].reason
+
+
+@pytest.mark.django_db
+def test_a_first_name_one_typo_apart_is_shown_but_marked_weaker(db):
+    """"Jonhmar" and "Johnmar" -- two letters swapped copying a name off a
+    form. Never linked automatically; a person has to look."""
+    Person.objects.create(last_name="Til-Adan", first_name="Jonhmar")
+    Person.objects.create(last_name="Til-Adan", first_name="Johnmar")
+
+    pairs = find_duplicate_pairs()
+
+    assert len(pairs) == 1
+    assert "differ by one letter" in pairs[0].reason
+
+
+@pytest.mark.django_db
+def test_two_genuinely_different_short_names_are_not_paired(db):
+    """Below four letters a single edit is most of the word, and Ana and
+    Ann are two real names."""
+    Person.objects.create(last_name="Til-Adan", first_name="Ana")
+    Person.objects.create(last_name="Til-Adan", first_name="Ann")
+
+    assert find_duplicate_pairs() == []
+
+
+@pytest.mark.django_db
+def test_two_unrelated_names_are_not_paired(db):
+    Person.objects.create(last_name="Til-Adan", first_name="Johnson")
+    Person.objects.create(last_name="Til-Adan", first_name="Gemma")
+
+    assert find_duplicate_pairs() == []
+
+
+@pytest.mark.django_db
+def test_the_reason_is_shown_on_the_screen(client, db):
+    Person.objects.create(last_name="Til-Adan", first_name="Jonhmar")
+    Person.objects.create(last_name="Til-Adan", first_name="Johnmar")
+    client.force_login(make_user("ict", groups.ICT))
+
+    body = client.get(duplicates_url()).content.decode()
+
+    assert "differ by one letter" in body

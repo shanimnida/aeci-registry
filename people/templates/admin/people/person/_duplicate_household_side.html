@@ -1,0 +1,46 @@
+{% comment %}
+One household of a duplicate pair. Rendered twice per pair from
+duplicates.html with `household` and `other` set.
+
+Members are listed in full rather than counted: which family this is, is a
+question you answer by reading the names, and the count alone would make
+the two sides look interchangeable when they are not.
+{% endcomment %}
+<div class="p-4">
+    <div class="flex items-baseline justify-between gap-3 mb-1">
+        <a href="{% url 'admin:people_household_view' household.pk %}" class="font-semibold underline">
+            {{ household.name }}
+        </a>
+        <span class="text-xs text-base-400 dark:text-base-500 whitespace-nowrap">#{{ household.pk }}</span>
+    </div>
+
+    <dl class="text-sm text-base-500 dark:text-base-400 mb-2">
+        <div><dt class="sr-only">Address</dt><dd>{{ household.address|default:"No address on file" }}</dd></div>
+        {% if household.date_of_marriage %}
+            <div><dt class="sr-only">Married</dt><dd>Married {{ household.date_of_marriage|date:"j F Y" }}</dd></div>
+        {% endif %}
+    </dl>
+
+    <ul class="text-sm mb-3">
+        {% for member in household.members.all %}
+            <li class="flex justify-between gap-3 py-1 border-b border-base-200 dark:border-base-700">
+                <span>{{ member.person.full_name }}</span>
+                <span class="text-base-500 dark:text-base-400 whitespace-nowrap">{{ member.get_role_display }}</span>
+            </li>
+        {% empty %}
+            <li class="text-base-400 dark:text-base-500">Nobody recorded.</li>
+        {% endfor %}
+    </ul>
+
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="household">
+        <input type="hidden" name="keep" value="{{ household.pk }}">
+        <input type="hidden" name="remove" value="{{ other.pk }}">
+        <button type="submit"
+                class="px-3 py-2 rounded border border-base-300 dark:border-base-600 text-sm font-medium"
+                onclick="return confirm('Keep {{ household.name|escapejs }} (#{{ household.pk }}) and merge {{ other.name|escapejs }} (#{{ other.pk }}) into it? Its members move across first. This cannot be undone.');">
+            Keep this one
+        </button>
+    </form>
+</div>

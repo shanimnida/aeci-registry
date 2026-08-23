@@ -16,6 +16,11 @@ fill, and only people already on that roster. That last part is what lets
 this page exist for them at all — see committees/appointing.py.
 {% endcomment %}
 
+{% block extrastyle %}
+    {{ block.super }}
+    {% include "admin/_native_control_theme.html" %}
+{% endblock %}
+
 {% block content %}
 <div class="max-w-4xl">
 
@@ -67,49 +72,59 @@ this page exist for them at all — see committees/appointing.py.
                 </p>
             {% endif %}
 
-            <form method="post" class="px-4 py-3 flex flex-wrap items-end gap-3">
+            <form method="post" class="px-4 py-4">
                 {% csrf_token %}
                 <input type="hidden" name="committee" value="{{ block.committee.pk }}">
 
-                <label class="text-sm">
-                    <span class="block text-xs uppercase text-base-400 dark:text-base-500 mb-1">Appoint</span>
-                    {% comment %}
-                    A search box in front of the list, not a longer list. For a
-                    chairperson the options are their own roster and short; for
-                    ICT and the Board they are the whole congregation, and
-                    scrolling a few hundred names to find one is not a thing
-                    anyone should be asked to do. Typing filters the options
-                    below; with JavaScript off the plain select still works.
-                    {% endcomment %}
-                    <input type="search" placeholder="Type a name to narrow the list…"
-                           data-person-filter="person-{{ block.committee.pk }}"
-                           autocomplete="off"
-                           class="block w-64 mb-1 border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
-                    <select name="person" required id="person-{{ block.committee.pk }}"
-                            class="block w-64 border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
-                        <option value="">Choose a person…</option>
-                        {% for person in block.candidates %}
-                            <option value="{{ person.pk }}">{{ person.full_name }}{% if person.nickname %} "{{ person.nickname }}"{% endif %}{% if person.member_no %} · {{ person.member_no }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                    <span class="block text-xs text-base-400 dark:text-base-500 mt-1"
-                          data-person-count="person-{{ block.committee.pk }}"></span>
-                </label>
+                <div class="flex flex-wrap items-end gap-3">
+                    <div class="grow min-w-[16rem]">
+                        <label class="block text-xs uppercase text-base-400 dark:text-base-500 mb-1"
+                               for="person-{{ block.committee.pk }}">
+                            Appoint
+                        </label>
+                        {% comment %}
+                        A search box in front of the list, not a longer list.
+                        For a chairperson the options are their own roster and
+                        short; for ICT and the Board they are the whole
+                        congregation, and scrolling a few hundred names to find
+                        one is not a thing anyone should be asked to do. Typing
+                        filters the options below; with JavaScript off the plain
+                        select still works.
+                        {% endcomment %}
+                        <input type="search" placeholder="Type a name to narrow the list…"
+                               data-person-filter="person-{{ block.committee.pk }}"
+                               autocomplete="off"
+                               class="block w-full h-9 mb-2 border border-base-300 dark:border-base-600 rounded px-3 bg-white dark:bg-base-900 text-sm">
+                        <select name="person" required id="person-{{ block.committee.pk }}"
+                                class="block w-full h-9 border border-base-300 dark:border-base-600 rounded px-2 bg-white dark:bg-base-900 text-sm">
+                            <option value="">Choose a person…</option>
+                            {% for person in block.candidates %}
+                                <option value="{{ person.pk }}">{{ person.full_name }}{% if person.nickname %} "{{ person.nickname }}"{% endif %}{% if person.member_no %} · {{ person.member_no }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-                <label class="text-sm">
-                    <span class="block text-xs uppercase text-base-400 dark:text-base-500 mb-1">As</span>
-                    <select name="role" required
-                            class="border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
-                        {% for value, label in role_choices %}
-                            <option value="{{ value }}">{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
+                    <div class="w-44">
+                        <label class="block text-xs uppercase text-base-400 dark:text-base-500 mb-1"
+                               for="role-{{ block.committee.pk }}">
+                            As
+                        </label>
+                        <select name="role" required id="role-{{ block.committee.pk }}"
+                                class="block w-full h-9 border border-base-300 dark:border-base-600 rounded px-2 bg-white dark:bg-base-900 text-sm">
+                            {% for value, label in role_choices %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-                <button type="submit"
-                        class="px-4 py-2 rounded bg-primary-600 text-white text-sm font-medium">
-                    Appoint
-                </button>
+                    <button type="submit"
+                            class="h-9 px-4 rounded bg-primary-600 text-white text-sm font-medium whitespace-nowrap">
+                        Appoint
+                    </button>
+                </div>
+
+                <p class="mt-2 text-xs text-base-400 dark:text-base-500"
+                   data-person-count="person-{{ block.committee.pk }}"></p>
             </form>
 
             {% if not block.candidates %}

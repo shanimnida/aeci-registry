@@ -189,3 +189,91 @@ def test_the_superuser_warning_is_on_the_page_that_grants_it(client, ict, volunt
     body = client.get(change_url(volunteer)).content.decode()
 
     assert "bypasses every permission check" in body
+
+
+# -- linking a login to a member record (2026-08-24) -------------------
+
+
+@pytest.mark.django_db
+def test_the_member_record_can_be_set_from_the_account_page(client, ict, volunteer):
+    """It used to mean going to Registry → People, finding the person,
+    opening their record and scrolling to a Login section -- and once
+    clicking a name opened a read-only page, that instruction was wrong as
+    well as long."""
+    from people.models import MembershipStatus, Person
+
+    person = Person.objects.create(
+        last_name="Udtuhan", first_name="Jemuel",
+        membership_status=MembershipStatus.MEMBER,
+    )
+    client.force_login(ict)
+
+    client.post(
+        change_url(volunteer),
+        {
+            "username": volunteer.username,
+            "first_name": "",
+            "last_name": "",
+            "email": "",
+            "is_active": "on",
+            "is_staff": "on",
+            "groups": [Group.objects.get(name=groups.CHAIRPERSON).pk],
+            "person": person.pk,
+            "last_login_0": "",
+            "last_login_1": "",
+            "date_joined_0": "2026-08-01",
+            "date_joined_1": "00:00:00",
+        },
+        follow=True,
+    )
+
+    person.refresh_from_db()
+    assert person.user == volunteer
+
+
+@pytest.mark.django_db
+def test_clearing_the_field_unlinks_the_member_record(client, ict, volunteer):
+    from people.models import Person
+
+    person = Person.objects.create(
+        last_name="Udtuhan", first_name="Jemuel", user=volunteer
+    )
+    client.force_login(ict)
+
+    client.post(
+        change_url(volunteer),
+        {
+            "username": volunteer.username,
+            "first_name": "",
+            "last_name": "",
+            "email": "",
+            "is_active": "on",
+            "is_staff": "on",
+            "groups": [],
+            "person": "",
+            "last_login_0": "",
+            "last_login_1": "",
+            "date_joined_0": "2026-08-01",
+            "date_joined_1": "00:00:00",
+        },
+        follow=True,
+    )
+
+    person.refresh_from_db()
+    assert person.user is None
+
+
+@pytest.mark.django_db
+def test_somebody_already_claimed_by_another_login_is_not_offered(client, ict, volunteer):
+    """A Person holds one login, so offering somebody already taken would
+    only produce a confusing failure."""
+    from people.models import Person
+
+    taken = Person.objects.create(last_name="Taken", first_name="Al", user=ict)
+    free = Person.objects.create(last_name="Free", first_name="Bea")
+    client.force_login(ict)
+
+    body = client.get(change_url(volunteer)).content.decode()
+
+    assert f'value="{free.pk}"' in body
+    assert f'value="{taken.pk}"' not in body

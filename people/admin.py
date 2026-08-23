@@ -24,7 +24,12 @@ from people.celebrations import (
     period_bounds,
 )
 from core.numbering import member_no_is_valid, new_member_no
-from people.duplicates import find_duplicate_pairs, merge_into
+from people.duplicates import (
+    find_duplicate_household_pairs,
+    find_duplicate_pairs,
+    merge_households,
+    merge_into,
+)
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
 
@@ -130,6 +135,32 @@ class CommitteeMembershipInline(TabularInline):
     autocomplete_fields = ("committee", "function")
 
 
+class ChildInline(TabularInline):
+    """The person's children, editable on their own record.
+
+    `Person.guardian` is the relationship the importer fills for every child
+    it creates from a parent's form, so this is where those children already
+    live -- there was simply nowhere to edit them. The household inline
+    above shows which household this person is IN, which is a different
+    question, and the household's own screen shows everyone under that roof
+    including people who are not this person's children.
+
+    `fk_name` is required: Person has two self-referential foreign keys
+    (`guardian` and `approved_by`) and Django will not guess between them.
+    """
+
+    model = Person
+    fk_name = "guardian"
+    verbose_name = "child"
+    verbose_name_plural = "children"
+    extra = 0  # Same trap, same fix -- see HouseholdMemberInline above.
+    fields = (
+        ("first_name", "middle_name", "last_name"),
+        ("date_of_birth", "membership_status", "guardian_relationship"),
+    )
+    show_change_link = True
+
+
 class FormScanInline(TabularInline):
     model = FormScan
     extra = 0
@@ -150,7 +181,9 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
     search_fields = ("last_name", "first_name", "nickname", "member_no", "mobile_number")
     readonly_fields = ("status_changed_at", "has_missing_data")
     autocomplete_fields = ("approved_by", "guardian", "user")
-    inlines = (HouseholdMemberInline, CommitteeMembershipInline, FormScanInline)
+    inlines = (
+        HouseholdMemberInline, ChildInline, CommitteeMembershipInline, FormScanInline,
+    )
     actions = ("assign_member_no",)
 
     fieldsets = (
@@ -392,6 +425,9 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
         if not self.has_delete_permission(request):
             raise PermissionDenied
 
+        if request.method == "POST" and request.POST.get("kind") == "household":
+            return self._merge_households(request)
+
         if request.method == "POST":
             keep = self.get_object(request, request.POST.get("keep", ""))
             remove = self.get_object(request, request.POST.get("remove", ""))
@@ -420,9 +456,13 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
             return redirect("admin:people_person_duplicates")
 
         pairs = find_duplicate_pairs()
+        household_pairs = find_duplicate_household_pairs()
         AccessLog.record(
             user=request.user,
-            report=f"possible duplicates ({len(pairs)} pair(s))"[:120],
+            report=(
+                f"possible duplicates ({len(pairs)} person, "
+                f"{len(household_pairs)} household)"
+            )[:120],
             ip=request.META.get("REMOTE_ADDR"),
         )
         context = {
@@ -430,8 +470,44 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
             "title": "Possible duplicates",
             "opts": self.model._meta,
             "pairs": pairs,
+            "household_pairs": household_pairs,
         }
         return render(request, "admin/people/person/duplicates.html", context)
+
+    def _merge_households(self, request):
+        """Fold one household into another.
+
+        Simpler than merging people: a household is a name, an address, a
+        wedding date and its members. The kept household's own answers are
+        never overruled -- only its gaps are filled.
+        """
+        keep = Household.objects.filter(pk=request.POST.get("keep", "")).first()
+        remove = Household.objects.filter(pk=request.POST.get("remove", "")).first()
+        if keep is None or remove is None or keep.pk == remove.pk:
+            self.message_user(
+                request,
+                "Could not resolve that pair of households — nothing was changed.",
+                level=messages.ERROR,
+            )
+            return redirect("admin:people_person_duplicates")
+
+        removed_name = str(remove)
+        moved = merge_households(keep, remove)
+        filled = (
+            f" Took its {' and '.join(moved['filled'])}." if moved["filled"] else ""
+        )
+        dropped = (
+            f" {moved['dropped']} member(s) were already in it."
+            if moved["dropped"]
+            else ""
+        )
+        self.message_user(
+            request,
+            f"Merged {removed_name} into {keep}. Moved {moved['members']} "
+            f"member(s) across.{filled}{dropped}",
+            level=messages.SUCCESS,
+        )
+        return redirect("admin:people_person_duplicates")
 
     # -- read-only detail ----------------------------------------------
 

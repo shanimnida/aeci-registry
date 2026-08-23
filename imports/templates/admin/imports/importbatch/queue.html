@@ -1,6 +1,11 @@
 {% extends "admin/base_site.html" %}
 {% load i18n %}
 
+{% block extrastyle %}
+    {{ block.super }}
+    {% include "admin/_native_control_theme.html" %}
+{% endblock %}
+
 {% block content %}
 <div class="mb-6">
     <div class="font-semibold text-2xl text-font-important-light dark:text-font-important-dark tracking-tight mb-1">
@@ -69,7 +74,7 @@ across batches instead of within just one.
     <div class="bg-white border border-base-200 rounded-default shadow-xs dark:bg-base-900 dark:border-base-700 sm:w-64">
         <select name="batch"
                 aria-label="Filter by batch"
-                class="w-full font-medium p-2.5 bg-transparent focus:outline-hidden dark:text-font-default-dark cursor-pointer">
+                class="w-full font-medium p-2.5 bg-white dark:bg-base-900 focus:outline-hidden dark:text-font-default-dark cursor-pointer">
             <option value="">All batches</option>
             {% for b in batches %}
                 <option value="{{ b.pk }}" {% if batch_filter == b.pk|stringformat:"s" %}selected{% endif %}>{{ b }}</option>

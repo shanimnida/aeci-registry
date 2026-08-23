@@ -46,7 +46,11 @@ def _inline_management_fields():
     """No inline is rendered by default under extra = 0 -- every formset
     starts at TOTAL_FORMS = 0, INITIAL_FORMS = 0."""
     fields = {}
-    for prefix in ("household_memberships", "committee_memberships", "scans"):
+    # "wards" is Person.guardian's related_name -- the children inline added
+    # 2026-08-24 (people/admin.py's ChildInline), which Django uses as that
+    # inline's formset prefix. A change form posts every inline's management
+    # form or the whole page bounces back at 200 with a formset error.
+    for prefix in ("household_memberships", "wards", "committee_memberships", "scans"):
         fields[f"{prefix}-TOTAL_FORMS"] = "0"
         fields[f"{prefix}-INITIAL_FORMS"] = "0"
         fields[f"{prefix}-MIN_NUM_FORMS"] = "0"

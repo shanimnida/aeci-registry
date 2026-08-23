@@ -129,6 +129,13 @@ def test_saving_a_person_over_a_seeded_officer_warns_and_names_the_weak_match(cl
         "household_memberships-INITIAL_FORMS": "0",
         "household_memberships-MIN_NUM_FORMS": "0",
         "household_memberships-MAX_NUM_FORMS": "1000",
+        # "wards" is Person.guardian's related_name -- the children inline
+        # added 2026-08-24. A change form posts every inline's management
+        # form or the page bounces back at 200 with a formset error.
+        "wards-TOTAL_FORMS": "0",
+        "wards-INITIAL_FORMS": "0",
+        "wards-MIN_NUM_FORMS": "0",
+        "wards-MAX_NUM_FORMS": "1000",
         "committee_memberships-TOTAL_FORMS": "0",
         "committee_memberships-INITIAL_FORMS": "0",
         "committee_memberships-MIN_NUM_FORMS": "0",

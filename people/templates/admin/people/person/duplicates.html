@@ -17,6 +17,38 @@ being the row that carries her committee role.
 <div class="max-w-5xl">
 
     <h1 class="text-2xl font-semibold mb-1">Possible duplicates</h1>
+
+    {% if household_pairs %}
+        <h2 class="text-lg font-semibold mt-2 mb-1">Households</h2>
+        <p class="text-sm text-base-500 dark:text-base-400 mb-4">
+            One family entered twice. Keeping one moves the other's members
+            across and deletes it; the kept household's own address and
+            wedding date are never overruled, only its gaps filled.
+        </p>
+
+        {% for pair in household_pairs %}
+            <section class="mb-6 border border-base-200 dark:border-base-700 rounded overflow-hidden">
+                <p class="px-4 py-2 text-sm border-b border-base-200 dark:border-base-700 text-base-600 dark:text-base-300">
+                    {{ pair.reason }}
+                </p>
+                <div class="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-base-200 dark:divide-base-700">
+                    {% for side in "LR" %}
+                        {% if side == "L" %}
+                            {% with household=pair.left other=pair.right %}
+                                {% include "admin/people/person/_duplicate_household_side.html" %}
+                            {% endwith %}
+                        {% else %}
+                            {% with household=pair.right other=pair.left %}
+                                {% include "admin/people/person/_duplicate_household_side.html" %}
+                            {% endwith %}
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </section>
+        {% endfor %}
+
+        <h2 class="text-lg font-semibold mt-8 mb-1">People</h2>
+    {% endif %}
     <p class="text-sm text-base-500 dark:text-base-400 mb-6">
         {{ pairs|length }} pair{{ pairs|length|pluralize }} matched on name.
         Keeping one moves its partner's committee roles, household places and
@@ -27,6 +59,10 @@ being the row that carries her committee role.
 
     {% for pair in pairs %}
         <section class="mb-8 border border-base-200 dark:border-base-700 rounded overflow-hidden">
+
+            <p class="px-4 py-2 text-sm border-b border-base-200 dark:border-base-700 text-base-600 dark:text-base-300">
+                {{ pair.reason }}
+            </p>
 
             {% if pair.conflicts %}
                 <div class="px-4 py-3 border-b border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 text-sm">
@@ -66,7 +102,12 @@ being the row that carries her committee role.
         </section>
     {% empty %}
         <p class="text-base-500 dark:text-base-400">
-            No two records look like the same person. Nothing to do here.
+            {% if household_pairs %}
+                No two records look like the same person.
+            {% else %}
+                Nothing looks duplicated — no two people and no two households.
+                Nothing to do here.
+            {% endif %}
         </p>
     {% endfor %}
 

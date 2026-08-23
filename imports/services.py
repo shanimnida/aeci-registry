@@ -111,21 +111,61 @@ def _given_name_tokens(first_name: str, middle_name: str) -> list[str]:
     return tokens
 
 
+def _is_initial(token: str) -> bool:
+    """A single letter, with or without a full stop: "a", "a.", "j"."""
+    stripped = token.rstrip(".")
+    return len(stripped) == 1 and stripped.isalpha()
+
+
+def _tokens_match(one: str, other: str) -> bool:
+    """Two name words that could be the same word.
+
+    An INITIAL matches the name it stands for. The paper form asks for a
+    middle name and half the parents write "A." while the child's own form
+    later says "Angel" -- so "Johnson A. Til-adan" and "Johnson Angel
+    Til-adan" are one child, and treating "a." and "angel" as different
+    words made them two (found in the register 2026-08-24, three times in
+    one family).
+
+    An initial matching anything starting with that letter is a real
+    widening, and it is bounded: the caller still requires the FIRST given
+    name to agree exactly, the surname to agree, and -- for a child or a
+    person's own record -- the date of birth to be identical. An initial
+    only ever stands in for a middle name that would otherwise be missing
+    or spelled out.
+    """
+    if one == other:
+        return True
+    if _is_initial(one) and other.startswith(one.rstrip(".")):
+        return True
+    if _is_initial(other) and one.startswith(other.rstrip(".")):
+        return True
+    return False
+
+
 def _names_are_compatible(incoming: list[str], candidate: list[str]) -> bool:
     """True when two given-name token lists could be the same person.
 
-    They must agree on the first given name, and one must be contained in
-    the other. A MISSING middle name is tolerated -- half the paper forms
-    leave it out -- but a CONTRADICTORY one is not: "Rhyzel Bayatin" and
-    "Rhyzel Domingo" are positive evidence of two different children, not a
-    transcription gap, so they are refused rather than linked.
+    They must agree on the first given name, and every word of the shorter
+    list must be matched by one of the longer's. A MISSING middle name is
+    tolerated -- half the paper forms leave it out -- and an INITIAL matches
+    the name it abbreviates (see _tokens_match). A CONTRADICTORY middle name
+    is not: "Rhyzel Bayatin" and "Rhyzel Domingo" are positive evidence of
+    two different children, not a transcription gap, so they are refused
+    rather than linked.
     """
     if not incoming or not candidate:
         return False
-    if incoming[0] != candidate[0]:
+    if not _tokens_match(incoming[0], candidate[0]):
         return False
     shorter, longer = sorted((incoming, candidate), key=len)
-    return all(token in longer for token in shorter)
+    unused = list(longer)
+    for token in shorter:
+        match = next((other for other in unused if _tokens_match(token, other)), None)
+        if match is None:
+            return False
+        unused.remove(match)
+    return True
 
 
 def _blank_to_none(value):

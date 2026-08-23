@@ -116,6 +116,29 @@ def overview_committee_card(committee, memberships, derived=()):
     }
 
 
+def ex_officio_reason(membership) -> str:
+    """Which office put this person on this committee.
+
+    Asked for 2026-08-24: the Secretariat roster lists a dozen people whose
+    only connection to it is a secretary post somewhere else, and "Rhem Mc
+    Garth Santos" alone does not say that. "ICT Secretary" does, and it is
+    the fact that would send somebody to the right person.
+
+    Empty for anybody who is not there ex officio, so an ordinary member
+    reads as an ordinary member.
+    """
+    if membership.role != CommitteeRole.EX_OFFICIO:
+        return ""
+    posts = (
+        CommitteeMembership.objects.active()
+        .filter(person_id=membership.person_id, role=CommitteeRole.SECRETARY)
+        .exclude(committee_id=membership.committee_id)
+        .select_related("committee")
+        .order_by("committee__name")
+    )
+    return ", ".join(f"{post.committee.name} Secretary" for post in posts)
+
+
 def overview_roster_row(membership):
     """One roster line, from either a real membership or a derived place.
 
@@ -129,6 +152,8 @@ def overview_roster_row(membership):
         function = membership.function_name
     else:
         function = membership.function.name if membership.function_id else ""
+        if not function:
+            function = ex_officio_reason(membership)
     return {
         "name": overview_display_name(person),
         "function": function,
