@@ -786,3 +786,60 @@ Residual (reported, not fixed): the weekly email digest spec 7.1 also describes 
   still needs creating for backups. Deliberately deferred as infrastructure work rather than
   celebrations work, so nothing today tells the Secretary the list is worth looking at; they have
   to remember to open it, or notice the dashboard panel.
+
+=== CHILD LINKING: MIDDLE NAMES (470 tests) ===
+Reported from real encoding 2026-08-23: a child was created twice because one parent's form wrote
+her middle name and the other's did not. Reproduced before any change was made, and the defect was
+worse than reported.
+
+Ruling: R43 — two separate faults, both fixed. (a) `_split_child_name` returned only (first, last),
+  folding everything else into the first name, so "Rhyzel Bayatin Abaigar" was stored as
+  first_name="Rhyzel Bayatin" with a BLANK middle_name. The middle name was not merely unmatched,
+  it was in the wrong field. It now returns (first, middle, last), taking the last token of
+  whatever precedes the surname as the middle name — the convention the paper form follows, so
+  "Juan Miguel Reyes Delacruz" gives first "Juan Miguel", middle "Reyes". (b) `_find_child_match`
+  compared first_name exactly, so the glued form never matched a properly encoded record — and,
+  because no candidate turned up AT ALL, it returned "no match" rather than "ambiguous" and created
+  the duplicate SILENTLY. Not even the R30 refusal fired. Matching now works on the surname, the
+  given names as a token list, and the birthdate.
+  Cost if wrong: a child whose real first name genuinely contains two words and whose second word
+  is not a middle name is split wrongly — visible and editable on the review screen before approval.
+
+Ruling: R44 — a MISSING middle name is tolerated; a CONTRADICTORY one is not, but neither does it
+  silently create a second person. "Rhyzel Bayatin" vs "Rhyzel Domingo" sharing a first name,
+  surname AND exact birthday is far more likely a misread middle name than a second child born the
+  same day, so it returns ambiguous and the reviewer decides. Returning "no match" there would
+  reintroduce the exact silent duplication this fix exists to stop, one case narrower.
+
+Ruling: R45 — added the signal the matcher never used: the household. A child is always being
+  recorded from a parent's form, so where two same-named, same-aged candidates survive, one already
+  in that family's household is the one meant and an unrelated namesake is not. This only narrows
+  genuine ambiguity — it can never widen a match the name and birthdate did not already allow, so
+  R30's "AEGIS does not guess" is intact.
+  Also: a later form supplying a middle name the existing record lacks now fills it in and reports
+  it, rather than discarding the fuller record. An existing middle name is never overwritten,
+  because R44 already refused anything that contradicts it.
+
+Ruling: R46 — same string-vs-date defect as R35, found by a failing test rather than by reading.
+  The old matcher narrowed by birthdate with `candidates.filter(date_of_birth=...)`, a DB query
+  where Django coerces "2015-04-04" to a date. The rewrite compares in Python, where it does not,
+  so EVERY match silently failed until the value was put through `DateField().to_python`. Third
+  time this shape has appeared (R35, this, and the review form keeping dates as free text on
+  purpose). Worth a rule: anything reading a date out of `cleaned` normalises before comparing.
+  Legacy rows the bug already wrote — first_name="Rhyzel Bayatin", middle_name="" — are matched by
+  the token comparison too, deliberately: a fix that could not reconcile the records it exists to
+  reconcile would be no fix. There is a test for exactly that shape.
+
+Test correction (same round): tests/imports/test_review.py asserted
+  ("Mikaela Rose P.", "Delacruz") with a comment explaining the middle initial "has nowhere else to
+  go, so it stays in first_name". That is the bug written down as expected behaviour — the same
+  shape as R26. Updated to assert the three-part split, not reverted.
+
+Residual (reported, not fixed): the duplicate rows this bug already wrote to production are NOT
+  merged by any of this. Spec 1.2 puts duplicate MERGING out of scope for Phase A, and merging two
+  Person rows means deciding which household, guardian and committee rows survive. The two Abaigar
+  rows need fixing by hand in the admin, or a merge tool needs building — which is a decision, not
+  an oversight. Duplicate DETECTION (people/admin.py's find_possible_duplicates and
+  imports/services.py's possible_duplicate_warning) still compares first_name exactly, so it would
+  also miss this pair; worth widening with the same token comparison in the same pass as any merge
+  work.

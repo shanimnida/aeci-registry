@@ -96,18 +96,22 @@ def test_approving_one_person_creates_exactly_that_person_household_children_and
     assert household.members.count() == 3
     child_names = set(
         Person.objects.filter(membership_status=MembershipStatus.CHILD).values_list(
-            "first_name", "last_name"
+            "first_name", "middle_name", "last_name"
         )
     )
     # _split_child_name (imports/services.py) strips the parent's own last
-    # name off the end of the child's one-string full_name; the middle
-    # initial has nowhere else to go, so it stays in first_name -- an
-    # editable field the reviewer can tidy up before approving. "P." keeps
+    # name off the end of the child's one-string full_name, then takes the
+    # last of what remains as the middle name. Until the 2026-08-23 middle
+    # names fix this test asserted ("Mikaela Rose P.", "Delacruz") -- the
+    # initial glued onto the first name, with a comment explaining that it
+    # "has nowhere else to go". It has somewhere to go now, and that gluing
+    # is exactly what made the same child unmatchable across two parents'
+    # forms. All three parts stay editable on the review screen. "P." keeps
     # its capital letter: core.capitalization leaves a bare, vowel-free
     # token (a middle initial) exactly as written rather than title-casing
     # it into "P.".
-    assert ("Mikaela Rose P.", "Delacruz") in child_names
-    assert ("Gabriel John P.", "Delacruz") in child_names
+    assert ("Mikaela Rose", "P.", "Delacruz") in child_names
+    assert ("Gabriel John", "P.", "Delacruz") in child_names
 
     memberships = CommitteeMembership.objects.filter(person=person)
     assert memberships.count() == 1

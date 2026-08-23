@@ -51,61 +51,175 @@ from people.models import Household, HouseholdMember, HouseholdRole, MembershipS
 from .parsing import SELF_SELECTABLE_COMMITTEE_NAMES
 
 
-def _split_child_name(full_name: str, parent_last_name: str) -> tuple[str, str]:
-    """Best-effort split of a one-string full name into (first, last).
+def _split_child_name(full_name: str, parent_last_name: str) -> tuple[str, str, str]:
+    """Best-effort split of a one-string full name into (first, middle, last).
 
-    docs/IMPORT_TEMPLATE.md's `children` entries carry only `full_name` --
-    there is no separate surname field to transcribe, because the paper form
-    itself only has one blank per child. If the name ends with the parent's
-    own last name (the common case), that becomes the child's last name and
-    the rest is first/middle name. Otherwise the last word is treated as the
-    surname. Either way this is a guess: the reviewer sees it as an editable
-    field before approving and can correct it.
+    docs/IMPORT_TEMPLATE.md's child entries carry only `full_name` -- the
+    paper form has one blank per child, not three -- so the parts have to be
+    guessed. If the name ends with the parent's own last name (the common
+    case) that becomes the surname; otherwise the last word is.
+
+    BUG (2026-08-23, middle names): this used to return only (first, last),
+    folding everything else into the first name, so "Rhyzel Bayatin Abaigar"
+    was stored as first_name="Rhyzel Bayatin" with a blank middle_name. That
+    put the middle name in the wrong field AND made the row unmatchable
+    against the same child encoded properly by hand. Of whatever is left
+    after the surname, the LAST token is now taken as the middle name --
+    the convention the paper form itself follows -- and everything before it
+    as the first name, so "Juan Miguel Reyes Delacruz" gives first "Juan
+    Miguel", middle "Reyes".
+
+    Still a guess, and still shown to the reviewer as three editable fields
+    before anything is approved.
 
     Also reused by _find_spouse_match below to pull a first name out of
-    `spouse_name`, which is written in the same "FIRST M. LAST" shape.
+    `spouse_name`, which is written in the same shape.
     """
     full_name = " ".join(full_name.split())
-    lowered = full_name.lower()
     parent_last = parent_last_name.strip()
-    if parent_last and lowered.endswith(parent_last.lower()):
+
+    if parent_last and full_name.lower().endswith(parent_last.lower()):
         remainder = full_name[: -len(parent_last)].strip()
-        if remainder:
-            return remainder, parent_last
-        return full_name, parent_last
-    parts = full_name.rsplit(" ", 1)
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return full_name, parent_last or full_name
+        if not remainder:
+            # The whole name IS the parent's surname -- nothing to split.
+            return full_name, "", parent_last
+        last = parent_last
+    else:
+        parts = full_name.rsplit(" ", 1)
+        if len(parts) != 2:
+            return full_name, "", parent_last or full_name
+        remainder, last = parts
+
+    tokens = remainder.split()
+    if len(tokens) >= 2:
+        return " ".join(tokens[:-1]), tokens[-1], last
+    return remainder, "", last
+
+
+def _given_name_tokens(first_name: str, middle_name: str) -> list[str]:
+    """Every given-name word a person carries, lowercased, however the
+    record happens to distribute them between the two fields.
+
+    This is what makes the three storage shapes of one child comparable:
+    ("Rhyzel", "Bayatin") encoded by hand, ("Rhyzel Bayatin", "") written by
+    the old buggy splitter, and ("Rhyzel", "") from a form that omitted the
+    middle name all reduce to a token list that can be compared.
+    """
+    tokens = []
+    for part in (first_name, middle_name):
+        tokens.extend((part or "").lower().split())
+    return tokens
+
+
+def _names_are_compatible(incoming: list[str], candidate: list[str]) -> bool:
+    """True when two given-name token lists could be the same person.
+
+    They must agree on the first given name, and one must be contained in
+    the other. A MISSING middle name is tolerated -- half the paper forms
+    leave it out -- but a CONTRADICTORY one is not: "Rhyzel Bayatin" and
+    "Rhyzel Domingo" are positive evidence of two different children, not a
+    transcription gap, so they are refused rather than linked.
+    """
+    if not incoming or not candidate:
+        return False
+    if incoming[0] != candidate[0]:
+        return False
+    shorter, longer = sorted((incoming, candidate), key=len)
+    return all(token in longer for token in shorter)
 
 
 def _blank_to_none(value):
     return value or None
 
 
-def _find_child_match(first_name: str, last_name: str, date_of_birth):
-    """Look for an existing Person matching a child entry on name AND date of
-    birth (CRITICAL 1). Both parents' forms list the same children --
-    approving the second parent must reuse the child the first parent's
-    approval already created, not build a second one.
+def _find_child_match(first_name, middle_name, last_name, date_of_birth, household=None):
+    """Look for the Person a child entry already refers to (CRITICAL 1).
+
+    Both parents' forms list the same children, so approving the second
+    parent must reuse the child the first parent's approval created rather
+    than build a second one.
+
+    BUG (2026-08-23, middle names): this used to compare `first_name`
+    exactly, which meant the same child written "Rhyzel Bayatin Abaigar" on
+    one form and "Rhyzel Abaigar" on the other never matched -- and, because
+    no candidate turned up at all, it reported "no match" rather than
+    "ambiguous" and created a duplicate silently. Matching now works on
+    three signals instead of two:
+
+      * the surname,
+      * the given names as a token list, so a middle name may be present on
+        one side and absent on the other (see _names_are_compatible for why
+        a *different* middle name still refuses), and
+      * the date of birth, which is what narrows a name to one person.
+
+    Plus a fourth when it is available: `household`. A child is always being
+    recorded from a parent's form, so where two same-named, same-aged
+    candidates exist, one already in this family's household is the one
+    meant and an unrelated namesake is not. This narrows genuine ambiguity;
+    it never widens a match that the name and birthdate did not already
+    allow.
 
     Returns (person_or_None, ambiguous). `ambiguous` is True whenever a
-    same-name candidate exists but the match cannot be narrowed to exactly
-    one: more than one candidate shares the given date of birth, every
-    same-name candidate has a *different* date of birth, or this child's own
-    date of birth is missing so nothing could be compared at all. The
-    caller must not guess in that case -- it raises a ValidationError and
-    lets the reviewer resolve it by correcting the child's name or date of
-    birth (or the existing record's), the same way every other
-    approval-time refusal in this module works.
+    plausible candidate exists but cannot be narrowed to exactly one: more
+    than one survives, every candidate's birthdate disagrees, or this
+    child's own birthdate is missing so nothing could be compared. R30
+    stands -- the caller refuses rather than guessing, and the reviewer
+    resolves it.
     """
-    candidates = Person.objects.filter(first_name__iexact=first_name, last_name__iexact=last_name)
-    if not candidates.exists():
+    last_name = (last_name or "").strip()
+    incoming = _given_name_tokens(first_name, middle_name)
+    if not last_name or not incoming:
         return None, False
-    if date_of_birth is not None:
-        exact = list(candidates.filter(date_of_birth=date_of_birth))
-        if len(exact) == 1:
-            return exact[0], False
+
+    # The review form keeps every date as free text (imports/forms.py), so
+    # this arrives as "2015-04-04", not a date. The comparison below happens
+    # in Python rather than in SQL -- where Django would have coerced it --
+    # so it has to be coerced here or every match silently fails.
+    date_of_birth = models.DateField().to_python(date_of_birth)
+
+    given = incoming[0]
+    # Cast a wide net in SQL -- the given name exactly, or followed by more
+    # words, which is the shape the old splitter wrote -- then narrow in
+    # Python, where the token comparison can be expressed properly.
+    near_misses = list(
+        Person.objects.filter(last_name__iexact=last_name).filter(
+            Q(first_name__iexact=first_name) | Q(first_name__istartswith=f"{given} ")
+        )
+    )
+    candidates = [
+        candidate
+        for candidate in near_misses
+        if _names_are_compatible(
+            incoming, _given_name_tokens(candidate.first_name, candidate.middle_name)
+        )
+    ]
+
+    if not candidates:
+        # Nobody compatible -- but somebody with this first name, this
+        # surname and this exact birthday whose middle name contradicts is
+        # far more likely a misread middle name than a second child born the
+        # same day. Refusing sends it to the reviewer; returning "no match"
+        # would silently create the duplicate this function exists to stop.
+        if date_of_birth is not None and any(
+            candidate.date_of_birth == date_of_birth for candidate in near_misses
+        ):
+            return None, True
+        return None, False
+
+    if date_of_birth is None:
+        return None, True
+
+    dated = [c for c in candidates if c.date_of_birth == date_of_birth]
+    if len(dated) == 1:
+        return dated[0], False
+    if len(dated) > 1 and household is not None:
+        in_household = [
+            c
+            for c in dated
+            if HouseholdMember.objects.filter(household=household, person=c).exists()
+        ]
+        if len(in_household) == 1:
+            return in_household[0], False
     return None, True
 
 
@@ -125,7 +239,7 @@ def _find_spouse_match(spouse_name: str, household_surname: str, exclude_pk):
     spouse_name = " ".join((spouse_name or "").split())
     if not spouse_name:
         return None, False
-    _, guessed_last = _split_child_name(spouse_name, household_surname)
+    *_, guessed_last = _split_child_name(spouse_name, household_surname)
     normalized = spouse_name.lower()
     candidates = Person.objects.filter(last_name__iexact=guessed_last).exclude(pk=exclude_pk)
     matches = [
@@ -338,10 +452,12 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
             # point a household is actually needed, if nothing earlier
             # already made one.
             household = _ensure_household(household, person, spouse_match, cleaned, user, notices)
-            first_name, last_name = _split_child_name(full_name, person.last_name)
+            first_name, middle_name, last_name = _split_child_name(full_name, person.last_name)
             date_of_birth = _blank_to_none(child.get("date_of_birth"))
 
-            match, ambiguous = _find_child_match(first_name, last_name, date_of_birth)
+            match, ambiguous = _find_child_match(
+                first_name, middle_name, last_name, date_of_birth, household=household
+            )
             if ambiguous:
                 raise ValidationError(
                     f"'{full_name}' matches more than one existing person, or an existing "
@@ -353,10 +469,26 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
             if match is not None:
                 child_person = match
                 notices.append(f"Linked to existing child {child_person.full_name}.")
+                # The first form to arrive may have left the middle name out
+                # (BUG, 2026-08-23: middle names). A later form supplying it
+                # is the fuller record, and linking must not discard it --
+                # but an existing middle name is never overwritten, since
+                # _names_are_compatible already refused anything that
+                # contradicts it.
+                if middle_name and not child_person.middle_name:
+                    child_person.middle_name = middle_name
+                    child_person.updated_by = user
+                    child_person.full_clean()
+                    child_person.save()
+                    notices.append(
+                        f"Recorded this form's middle name ({middle_name}) on "
+                        f"{child_person.full_name}, which had none on file."
+                    )
             else:
                 child_person = Person(
                     last_name=last_name,
                     first_name=first_name,
+                    middle_name=middle_name,
                     date_of_birth=date_of_birth,
                     membership_status=MembershipStatus.CHILD,
                     guardian=person,

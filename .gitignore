@@ -54,3 +54,14 @@ Thumbs.db
 *.JPEG
 *.PNG
 *.PDF
+
+# Filled member data as spreadsheets — Google Forms exports, AI transcription
+# sheets, anything produced from `form images/`. Same rule as the scans: this
+# is members' personal data under RA 10173 and never belongs in git. The one
+# exception is data/officers.csv, which holds governance facts from Board
+# minutes (names and committees of officers), not members' private details.
+*.xlsx
+*.xls
+*.csv
+!data/officers.csv
+*(Responses)*
