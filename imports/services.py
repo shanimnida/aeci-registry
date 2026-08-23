@@ -298,6 +298,56 @@ def _reconcile_marriage_date(household, date_of_marriage, user, notices):
         )
 
 
+# Sentinel for "these children live in more than one household", which is
+# neither a household to join nor an absence of one.
+_SPREAD_ACROSS_HOUSEHOLDS = object()
+
+
+def _household_from_existing_children(children, person):
+    """The household the children on this form already belong to, if there
+    is exactly one.
+
+    BUG (2026-08-24, duplicate households): a form that leaves Spouse Name
+    blank used to get its own household, even when the children it lists
+    were already recorded in the other parent's. Both parents' forms list
+    the same children -- that is how the paper form works, and it is the
+    premise CRITICAL 1 was built on -- so those children ARE the evidence
+    that these two rows are one family. Ignoring them produced two "Reyes
+    Family" households with the same children in both.
+
+    This is not a guess. The children named on this sheet are matched by
+    name AND date of birth, the same way the children loop matches them; if
+    they already sit in a household, that is the household this person
+    belongs to.
+
+    Returns None where it cannot be sure: no children matched, or they are
+    spread across more than one household, which is itself a mess a human
+    should look at rather than something to pick a winner from.
+    """
+    households = set()
+    for child in children:
+        full_name = (child.get("full_name") or "").strip()
+        if not full_name:
+            continue
+        first_name, middle_name, last_name = _split_child_name(full_name, person.last_name)
+        match, ambiguous = _find_child_match(
+            first_name, middle_name, last_name, _blank_to_none(child.get("date_of_birth"))
+        )
+        if ambiguous or match is None:
+            continue
+        households.update(
+            HouseholdMember.objects.filter(person=match).values_list(
+                "household_id", flat=True
+            )
+        )
+
+    if len(households) > 1:
+        return _SPREAD_ACROSS_HOUSEHOLDS
+    if not households:
+        return None
+    return Household.objects.filter(pk=households.pop()).first()
+
+
 def _ensure_household(household, person, spouse_match, cleaned, user, notices):
     """Return `household`, creating it first if it is still None (BUG,
     2026-08-22: empty households). Called at each point in
@@ -342,6 +392,59 @@ def _ensure_household(household, person, spouse_match, cleaned, user, notices):
     return household
 
 
+def _find_own_record_from_a_parents_form(cleaned):
+    """The row's subject, if they are already in the register because a
+    parent listed them as a child.
+
+    BUG (2026-08-24): parents write a child's given name and nothing else --
+    "Rhyzel", no middle name, no surname -- so AEGIS records her with the
+    parent's surname and a blank middle name. Years later she fills in her
+    own profiling form as "Rhyzel Bayatin Reyes" and got a SECOND Person
+    row, because this module's rule was that the subject of a form is always
+    a new person.
+
+    That rule was right for adults and wrong for exactly this case, which is
+    the one case where AEGIS itself created the earlier record and knows
+    where it came from. So the match is deliberately narrow:
+
+      * the earlier record must be one AEGIS made from somebody else's form
+        -- it has a `guardian`, or its status is CHILD. A brand-new adult
+        member can never match this, and neither can two unrelated
+        namesakes;
+      * the given names must be compatible the same forgiving way child
+        linking compares them (R43), since the parent's version is the one
+        missing pieces;
+      * the dates of birth must be present and identical. Without a
+        birthdate on both sides there is nothing holding the match up, and
+        this returns None rather than guessing;
+      * and exactly one candidate may survive.
+
+    Returns (person_or_None, ambiguous), the same shape as the other
+    finders.
+    """
+    date_of_birth = models.DateField().to_python(_blank_to_none(cleaned.get("date_of_birth")))
+    if date_of_birth is None:
+        return None, False
+
+    last_name = (cleaned.get("last_name") or "").strip()
+    incoming = _given_name_tokens(cleaned.get("first_name"), cleaned.get("middle_name"))
+    if not last_name or not incoming:
+        return None, False
+
+    candidates = [
+        candidate
+        for candidate in Person.objects.filter(
+            last_name__iexact=last_name, date_of_birth=date_of_birth
+        ).filter(Q(guardian__isnull=False) | Q(membership_status=MembershipStatus.CHILD))
+        if _names_are_compatible(
+            incoming, _given_name_tokens(candidate.first_name, candidate.middle_name)
+        )
+    ]
+    if len(candidates) == 1:
+        return candidates[0], False
+    return None, len(candidates) > 1
+
+
 def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple[Person, list[str]]:
     """Create (or link) the Person, Household, child Persons and
     CommitteeMemberships for one approved import row.
@@ -363,33 +466,82 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
     """
     notices: list[str] = []
     with transaction.atomic():
-        person = Person(
-            member_no=_blank_to_none(cleaned.get("member_no")),
-            last_name=cleaned["last_name"],
-            first_name=cleaned["first_name"],
-            middle_name=cleaned.get("middle_name") or "",
-            suffix=cleaned.get("suffix") or "",
+        # A child their parent listed years ago, now filling in their own
+        # form (BUG, 2026-08-24). Everything below then UPDATES that record
+        # instead of creating a second one.
+        own_record, own_ambiguous = _find_own_record_from_a_parents_form(cleaned)
+        if own_ambiguous:
+            raise ValidationError(
+                "More than one existing child record matches this name and date "
+                "of birth, so AEGIS will not guess which of them this form "
+                "belongs to. Resolve the duplicates first, or correct the date "
+                "of birth."
+            )
+
+        fields = {
+            "member_no": _blank_to_none(cleaned.get("member_no")),
+            "last_name": cleaned["last_name"],
+            "first_name": cleaned["first_name"],
+            "middle_name": cleaned.get("middle_name") or "",
+            "suffix": cleaned.get("suffix") or "",
             # The online form asks for this and Celebrations greets people
             # by it; the AI spreadsheet has no column for one, so that path
             # simply leaves it blank.
-            nickname=cleaned.get("nickname") or "",
-            date_of_birth=_blank_to_none(cleaned.get("date_of_birth")),
-            place_of_birth=cleaned.get("place_of_birth") or "",
-            gender=cleaned.get("gender") or "",
-            civil_status=cleaned.get("civil_status") or "",
-            nationality=cleaned.get("nationality") or "Filipino",
-            home_address=cleaned.get("home_address") or "",
-            mobile_number=cleaned.get("mobile_number") or "",
-            email=cleaned.get("email") or "",
-            membership_status=cleaned.get("membership_status") or MembershipStatus.MEMBER,
-            date_filed=_blank_to_none(cleaned.get("date_filed")),
-            emergency_contact_name=cleaned.get("emergency_contact_name") or "",
-            emergency_contact_relationship=cleaned.get("emergency_relationship") or "",
-            emergency_contact_number=cleaned.get("emergency_number") or "",
-            notes=cleaned.get("notes") or "",
-            created_by=user,
-            updated_by=user,
-        )
+            "nickname": cleaned.get("nickname") or "",
+            "date_of_birth": _blank_to_none(cleaned.get("date_of_birth")),
+            "place_of_birth": cleaned.get("place_of_birth") or "",
+            "gender": cleaned.get("gender") or "",
+            "civil_status": cleaned.get("civil_status") or "",
+            "nationality": cleaned.get("nationality") or "Filipino",
+            "home_address": cleaned.get("home_address") or "",
+            "mobile_number": cleaned.get("mobile_number") or "",
+            "email": cleaned.get("email") or "",
+            "date_filed": _blank_to_none(cleaned.get("date_filed")),
+            "emergency_contact_name": cleaned.get("emergency_contact_name") or "",
+            "emergency_contact_relationship": cleaned.get("emergency_relationship") or "",
+            "emergency_contact_number": cleaned.get("emergency_number") or "",
+            "notes": cleaned.get("notes") or "",
+        }
+
+        if own_record is None:
+            person = Person(
+                **fields,
+                membership_status=cleaned.get("membership_status") or MembershipStatus.MEMBER,
+                created_by=user,
+                updated_by=user,
+            )
+        else:
+            person = own_record
+            # Their own answers fill gaps and correct what a parent wrote
+            # from memory, but an empty box never erases something already on
+            # file -- a blank on this form means "not answered", not "delete
+            # what you have".
+            for name, value in fields.items():
+                if value not in (None, ""):
+                    setattr(person, name, value)
+            person.updated_by = user
+            notices.append(
+                f"Recorded this as {person.full_name}'s own form rather than a "
+                "second record — they were already in the register from a "
+                "parent's form."
+            )
+            # membership_status is deliberately NOT applied here. Changing an
+            # existing person to MEMBER requires a named approver (D15, spec
+            # 3.2.2) because it is a membership decision, and a child growing
+            # up is exactly the decision that rule exists to keep
+            # attributable. Linking the record is about identity; accepting
+            # them into membership is a separate act, made in the admin by
+            # somebody who signs their name to it.
+            if (
+                cleaned.get("membership_status")
+                and cleaned["membership_status"] != person.membership_status
+            ):
+                notices.append(
+                    f"Left their status as {person.get_membership_status_display()}. "
+                    "Accepting somebody into membership needs a named approver, "
+                    "so make that change on their record rather than here."
+                )
+
         # form_version decides whether a Data Privacy Consent section existed
         # on the paper form at all (docs/IMPORT_TEMPLATE.md) -- v1 forms never
         # asked, so there is nothing to record as consent for them. v3 is the
@@ -451,11 +603,55 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
         # Household.date_of_marriage (BUG, 2026-08-22: empty households).
         # `spouse_match` can only be set when `spouse_name` is (see
         # _find_spouse_match), so this also covers the matched-spouse case.
-        if household is None and (spouse_name or date_of_marriage):
+        # Before starting a household, see whether this family already has
+        # one -- the children named on this form are the evidence (BUG,
+        # 2026-08-24: duplicate households).
+        family_is_split = False
+        if household is None:
+            existing = _household_from_existing_children(children, person)
+            if existing is _SPREAD_ACROSS_HOUSEHOLDS:
+                # Making a third household would put each of these children
+                # in two, which is worse than the mess already there. AEGIS
+                # will not guess which household is the family's, and will
+                # not block a person's record over somebody else's tangle --
+                # so this person is recorded, no household is touched, and
+                # the reviewer is told exactly what to sort out.
+                family_is_split = True
+                existing = None
+                notices.append(
+                    "The children on this form are already recorded in more than "
+                    "one household, so AEGIS left the households alone and did "
+                    "not link the children here. This person was created; sort "
+                    "the households out on the Households screen and add them by "
+                    "hand."
+                )
+            if existing is not None:
+                household = existing
+                if not HouseholdMember.objects.filter(
+                    household=household, person=person
+                ).exists():
+                    role = (
+                        HouseholdRole.SPOUSE
+                        if household.members.filter(role=HouseholdRole.HEAD).exists()
+                        else HouseholdRole.HEAD
+                    )
+                    member = HouseholdMember(
+                        household=household, person=person, role=role
+                    )
+                    member.full_clean()
+                    member.save()
+                notices.append(
+                    f"Joined the existing household ({household}) rather than "
+                    "starting a second one — the children on this form are "
+                    "already recorded there."
+                )
+                _reconcile_marriage_date(household, date_of_marriage, user, notices)
+
+        if household is None and not family_is_split and (spouse_name or date_of_marriage):
             household = _ensure_household(household, person, spouse_match, cleaned, user, notices)
 
         # -- children (CRITICAL 1) -------------------------------------------
-        for child in children:
+        for child in [] if family_is_split else children:
             full_name = (child.get("full_name") or "").strip()
             if not full_name:
                 continue

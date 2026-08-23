@@ -96,14 +96,19 @@ def overview_committee_card(committee, memberships, derived=()):
     secretary = next((m for m in memberships if m.role == CommitteeRole.SECRETARY), None)
     co_chairs = [m for m in memberships if m.role == CommitteeRole.CO_CHAIR]
     oversight = [m for m in memberships if m.role == CommitteeRole.OVERSIGHT]
+    # An appointed body has no officers by design, so an empty post is not
+    # a vacancy and reporting it as one is noise on a screen whose whole job
+    # is showing real gaps (see Committee.has_officers).
+    officer_gaps = committee.has_officers
     return {
         "committee": committee,
         "count": len(memberships) + len(derived),
         "derived_count": len(derived),
         "is_empty": not memberships and not derived,
-        "missing_chair": chair is None,
-        "missing_secretary": secretary is None,
-        "missing_oversight": not oversight,
+        "has_officers": committee.has_officers,
+        "missing_chair": officer_gaps and chair is None,
+        "missing_secretary": officer_gaps and secretary is None,
+        "missing_oversight": officer_gaps and not oversight,
         "chair_name": overview_display_name(chair.person) if chair else "",
         "secretary_name": overview_display_name(secretary.person) if secretary else "",
         "co_chair_names": [overview_display_name(m.person) for m in co_chairs],

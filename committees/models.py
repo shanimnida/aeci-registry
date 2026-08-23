@@ -15,6 +15,17 @@ class Committee(TimeStampedModel):
         default=True,
         help_text="Whether members may choose this committee on the profiling form.",
     )
+    has_officers = models.BooleanField(
+        default=True,
+        help_text=(
+            "Whether this committee has a chairperson, co-chair and secretary "
+            "of its own. False for an appointed body whose members are named "
+            "by the Board rather than led from within — Grievance and "
+            "Reconciliation, whose members include the church's pastors. An "
+            "empty officer post is not a vacancy for such a committee, so the "
+            "overview stops reporting it as one."
+        ),
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:

@@ -57,6 +57,12 @@ changelist stays one click away ("View as a table") for adding and editing
             Nobody currently assigned
         </div>
         {% else %}
+        {% if not card.has_officers %}
+        <p class="text-sm mt-2 text-base-500 dark:text-base-400">
+            Appointed body — the Board names its members, and it has no
+            chairperson, co-chair or secretary of its own.
+        </p>
+        {% else %}
         <div class="flex flex-col gap-2 text-sm mt-2">
             <div class="flex items-center gap-2 {% if card.missing_chair %}text-amber-800 dark:text-amber-300{% else %}text-base-700 dark:text-base-300{% endif %}">
                 {% if card.missing_chair %}
@@ -97,6 +103,7 @@ changelist stays one click away ("View as a table") for adding and editing
                 {% endif %}
             </div>
         </div>
+        {% endif %}
         {% endif %}
     </a>
     {% endfor %}

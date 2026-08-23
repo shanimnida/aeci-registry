@@ -1231,3 +1231,62 @@ Ruling: R78 — the multi-line `{# #}` template comment leaked ONTO A PAGE for t
   template, plus a guard on the guard asserting the glob matches something -- a glob that silently
   matched nothing would make every assertion vacuous. A per-page test proves only that today's
   pages are clean; this one cannot be outgrown by adding a template.
+
+=== THE REYES CASE, A CHILD'S OWN FORM, AND AN APPOINTED BODY (653 tests) ===
+All three from real encoding, 2026-08-24. Each was reproduced before anything was changed.
+
+Ruling: R79 — duplicate households. A form that leaves Spouse Name blank got its own household
+  even when the children it lists were already recorded in the other parent's, producing two
+  "Reyes Family" households with the same children in both. The fix uses the signal that was
+  sitting there unread: both parents' forms list the same children -- that is how the paper form
+  works, and it is the premise CRITICAL 1 was built on -- so those children ARE the evidence that
+  two rows are one family. Before starting a household, AEGIS now matches the row's children (name
+  AND date of birth, the same test the children loop uses) and joins the household they already
+  belong to, entering as SPOUSE where a HEAD is already recorded. This is not a guess: the children
+  named on this sheet are the ones being matched.
+
+Ruling: R80 — where the children turn out to be spread across MORE THAN ONE household, AEGIS
+  creates the person, touches no household, links no children, and says exactly that. The two
+  obvious alternatives are both worse. Making a third household -- what it did before this ruling
+  -- puts each of those children in two households and actively degrades the data. Refusing the
+  approval blocks a person's record over somebody else's tangle. So: record the person, leave the
+  mess untouched and named, and let a human sort the households out. This is the R30 posture
+  ("AEGIS will not guess") applied where blocking would be disproportionate.
+
+Ruling: R81 — a child filling in their own form now UPDATES their record instead of creating a
+  second one. Parents write a given name and nothing else, so AEGIS stores the child with the
+  parent's surname and a blank middle name; years later she submits "Rhyzel Bayatin Reyes" and got
+  a duplicate, because this module's rule was that a form's subject is always somebody new. That
+  rule is right for adults and wrong for the one case where AEGIS created the earlier record
+  itself and knows where it came from. The match is deliberately narrow: the earlier record must
+  have a guardian or be status CHILD (a brand-new adult can never match, and neither can two
+  unrelated namesakes), the given names must be compatible the same forgiving way R43 compares
+  them, the birthdates must be present and identical, and exactly one candidate may survive.
+  Two guards on what linking then does: a blank on the new form NEVER erases something already on
+  file -- blank means "not answered", not "delete" -- and membership_status is NOT applied,
+  because changing somebody to MEMBER requires a named approver (D15) and a child growing up is
+  precisely the decision that rule exists to keep attributable. Both are reported to the reviewer.
+  Cost if wrong: two genuinely different people sharing a surname and an exact birthdate, one of
+  them a child record AEGIS made, would merge. The duplicates screen shows what happened and the
+  notice names it at approval.
+
+Ruling: R82 — Committee.has_officers, False for Grievance and Reconciliation. From the church:
+  "the Grievance and Reconciliation Committee doesnt need a Chair and Co-Chair, the members are
+  appointed as well such as the two Pastors of the Church." D7 already made it the one committee
+  absent from the profiling form; this is the other half of the same fact -- an appointed body, not
+  one led from within. An empty officer post there is not a vacancy, so the overview stops
+  reporting one and says "Appointed body" instead, and the appointments screen does not offer it,
+  since there are no posts to fill. Its members are recorded on the ordinary membership screen,
+  which is what they are. A field rather than a hardcoded committee code, so the Board can change
+  it without a code change. Tested that the exemption is for that committee ONLY -- an unfilled
+  chair on Youth is still flagged.
+
+Ruling: R83 — the account screen now shows whether a login is joined to a Person record. A
+  chairperson's screens are scoped by matching their login to their own Person
+  (`person__user=request.user`); unlinked, every query returns nothing and they sign in to a system
+  that looks empty. That happened to the Youth chairperson's account, one day after the same
+  screen's OTHER missing tick (is_staff, R75) did the equivalent. Both steps are in
+  docs/DEPLOYMENT.md section 7. Two accounts in two days is the evidence that a document is not
+  where anybody looks, so the state is on the form beside the group that makes it matter, and on
+  the changelist as a column -- with a NOT LINKED warning naming the fix when the account is a
+  Chairperson.

@@ -5,6 +5,8 @@ from django.contrib.auth.models import Group, User
 from unfold.admin import ModelAdmin
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
+from core.groups import CHAIRPERSON
+
 # Re-register the stock auth admin with Unfold's ModelAdmin so the account
 # screens (used by ICT to create logins and manage groups — see
 # core.groups) get the same styled widgets as the rest of AEGIS, not a
@@ -93,9 +95,14 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
     # The dual-list shuttle widget, gone with the field it was for.
     filter_horizontal = ()
 
-    list_display = ("username", "first_name", "last_name", "role_summary", "is_staff", "is_active")
+    list_display = (
+        "username", "first_name", "last_name", "role_summary",
+        "member_record", "is_staff", "is_active",
+    )
     list_filter = ("is_staff", "is_active", "groups")
-    readonly_fields = ("last_login", "date_joined", "individual_permissions")
+    readonly_fields = (
+        "last_login", "date_joined", "individual_permissions", "member_record",
+    )
 
     fieldsets = (
         (None, {"fields": ("username", "password")}),
@@ -103,11 +110,11 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
         (
             "Access",
             {
-                "fields": ("is_active", "is_staff", "groups"),
+                "fields": ("is_active", "is_staff", "groups", "member_record"),
                 "description": (
                     "<strong>Staff status</strong> is what lets someone log in "
                     "at all — without it the right password still fails. The "
-                    "group below is what they can then do."
+                    "group is what they can then do."
                 ),
             },
         ),
@@ -147,6 +154,40 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
             return "Superuser"
         names = list(obj.groups.values_list("name", flat=True))
         return ", ".join(names) if names else "—"
+
+    @admin.display(description="Member record")
+    def member_record(self, obj):
+        """Whether this login is joined to a Person, and why it matters.
+
+        A chairperson's screens are scoped by matching their login to their
+        own Person record (`person__user=request.user`). Unlinked, every
+        query returns nothing and the account logs in to a system that looks
+        empty — which is what happened to the Youth chairperson's account on
+        2026-08-24, and to the first account created before that for a
+        different missing tick.
+
+        docs/DEPLOYMENT.md section 7 documents the step. Two accounts in two
+        days say a document is not where anybody looks, so the state is
+        shown here, next to the group that makes it matter.
+        """
+        if obj is None or not obj.pk:
+            return "—"
+        person = getattr(obj, "person", None)
+        if person is not None:
+            return f"Linked to {person.full_name}."
+
+        needs_one = obj.groups.filter(name=CHAIRPERSON).exists()
+        if needs_one:
+            return (
+                "NOT LINKED — and this account is a Chairperson, so its screens "
+                "will be empty until it is. Open this person's record under "
+                "Registry → People and set the User field in the Login section."
+            )
+        return (
+            "Not linked to anybody in the register. Fine for an ICT or "
+            "Secretariat account; a Chairperson needs one, or their committee "
+            "screens show nothing."
+        )
 
     @admin.display(description="Individual permissions")
     def individual_permissions(self, obj):

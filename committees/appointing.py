@@ -75,9 +75,16 @@ def committees_led_by(user):
 
 
 def appointable_committees(user):
+    """Committees this user may appoint an officer on.
+
+    `has_officers=False` committees are excluded for everybody: an appointed
+    body has no chairperson, co-chair or secretary to fill (see
+    Committee.has_officers). Its members are recorded on the ordinary
+    committee-membership screen, which is what they are -- members.
+    """
     if user.is_superuser or _group_names(user) & {groups.ICT, groups.BOARD}:
-        return Committee.objects.filter(is_active=True).order_by("name")
-    return committees_led_by(user)
+        return Committee.objects.filter(is_active=True, has_officers=True).order_by("name")
+    return committees_led_by(user).filter(has_officers=True)
 
 
 def appointable_roles(user):
