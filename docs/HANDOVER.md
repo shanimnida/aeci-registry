@@ -1177,3 +1177,57 @@ Ruling: R73 — Django's per-user permission picker is REMOVED from the account 
   Cost if wrong: a genuine one-off permission grant now needs the shell. That is the intended
   friction — if a role needs a capability, the role should get it, in the migration, for everyone
   holding it.
+
+=== TREASURER GROUP REMOVED, AND FOUR UI FIXES FROM REAL USE (637 tests) ===
+
+Ruling: R74 — the Treasurer login group is DELETED. It was created empty in 0002 so Phase B and C
+  accounts would slot in without a migration mid-flight, and so spec 4's separation-of-duties table
+  had no gap. Removed on the church's decision: "the treasurer has not asked anything to be done
+  yet so Phase C is not even sure." That is the right call — a role reserved for a subsystem nobody
+  has requested is speculation, a group granting nothing is a checkbox on the account form that
+  quietly does nothing, and a login that signs in to an empty admin reads as broken rather than as
+  pending. Spec 4 itself allowed for this ("If it proves confusing to have a login that can see
+  nothing..."), so this is the escape hatch being taken rather than a decision reversed.
+  The migration is reversible and nothing functional changes: the group held zero permissions.
+  CRITICAL DISTINCTION preserved and tested: the Treasurer POSITION -- the church office, seeded by
+  committees.0003_seed_positions, held by a real person whose appointments are part of the
+  corporate record (spec 7.6) -- is untouched. Only the login group went.
+  Tests that used Treasurer as "a role that must be refused" now use an account with NO group,
+  which is the same test and is now the real case: ICT creates a login before deciding the role.
+
+Ruling: R75 — the add-user form now creates a WORKING account in one screen. Reported as a bug:
+  "i created a new user test1 qweqweqwe and i cant log it in." The stock form asks only for a
+  username and password; is_staff defaults to False; Django's admin then refuses the account with
+  "Please enter the correct username and password for a staff account", which reads as a wrong
+  password. Nothing on screen said why, and the warning I had put in the description was on the
+  NEXT page.
+  AEGIS has no other kind of user -- member logins do not exist (D4) -- so every account made here
+  is for somebody who needs to get in. is_staff is on the add form, labelled "Can log in", and
+  starts ticked; the role is chosen on the same screen. There is now a test that creates an account
+  through the real form and then actually signs in as that person, which is the assertion that
+  would have caught this.
+
+Ruling: R76 — Celebrations shows calendar periods (This week / This month / next month) instead of
+  rolling day counts, at the church's request. This reverses R37's "rolling, not calendar" on the
+  church's own framing: a church works to a weekly rhythm (the Sunday service) and plans to a
+  monthly one, so those are the questions actually being asked. Periods INCLUDE days already past,
+  deliberately -- the page answers "has everyone been greeted this week", and a Wednesday view
+  hiding Monday's birthday would answer it wrongly. The week is Sunday to Saturday. R37's rolling
+  window is not gone: it is what the dashboard panel uses, where the question really is "what is
+  coming".
+
+Ruling: R77 — the appoint screen's person picker got a search box. Reported: "selecting a person is
+  too hard... i cant manually scroll for each person in the registry." For a chairperson the list
+  is their own roster and short; for ICT and the Board it is the whole congregation. Typing filters
+  the options, options carry nickname and member number so a name can be found by any of them, and
+  the plain select still works with JavaScript off.
+
+Ruling: R78 — the multi-line `{# #}` template comment leaked ONTO A PAGE for the second time, and
+  the church found it before any test did: every row of the committee roster carried a paragraph of
+  my explanatory prose. Django's `{# #}` is single-line only; a multi-line one is not a comment
+  token at all. The guard written the first time (R42) checked the two pages that had already
+  broken, which is why adding a third template walked straight past it.
+  Replaced with a STATIC check over every .html file in the project, parametrised one test per
+  template, plus a guard on the guard asserting the glob matches something -- a glob that silently
+  matched nothing would make every assertion vacuous. A per-page test proves only that today's
+  pages are clean; this one cannot be outgrown by adding a template.

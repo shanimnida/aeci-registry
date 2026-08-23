@@ -14,23 +14,19 @@ from unfold.admin import ModelAdmin, TabularInline
 from committees.models import Committee, CommitteeMembership, CommitteeRole
 from core.groups import is_chairperson_only, is_ict
 from people.celebrations import (
-    DEFAULT_WINDOW_DAYS,
+    DEFAULT_PERIOD,
+    PERIODS,
+    celebrations_for_period,
     combined_anniversary_greeting,
     combined_birthday_greeting,
     may_view_celebrations,
     missing_birthdate_count,
-    upcoming_anniversaries,
-    upcoming_birthdays,
+    period_bounds,
 )
 from core.numbering import member_no_is_valid, new_member_no
 from people.duplicates import find_duplicate_pairs, merge_into
 from people.models import Household, HouseholdMember, MembershipStatus, Person
 from records.models import AccessLog, FormScan
-
-# A year is the widest window that still means "upcoming"; past that the
-# page is a list of everyone, which is what the changelist is for.
-MAX_WINDOW_DAYS = 366
-CELEBRATION_WINDOW_CHOICES = (7, 30, 60, 90)
 
 # Spec D12: enough to run a committee, and nothing more.
 CHAIRPERSON_FIELDS = ("first_name", "last_name", "nickname", "mobile_number", "email")
@@ -546,14 +542,14 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
         if not may_view_celebrations(request.user):
             raise PermissionDenied
 
-        days = self._celebration_window(request)
-        today = timezone.localdate()
-        birthdays = upcoming_birthdays(start=today, days=days)
-        anniversaries = upcoming_anniversaries(start=today, days=days)
+        period = request.GET.get("period", DEFAULT_PERIOD)
+        if period not in PERIODS:
+            period = DEFAULT_PERIOD
+        birthdays, anniversaries, period_label = celebrations_for_period(period)
 
         AccessLog.record(
             user=request.user,
-            report=f"celebrations — next {days} days"[:120],
+            report=f"celebrations — {period_label}"[:120],
             ip=request.META.get("REMOTE_ADDR"),
         )
 
@@ -561,8 +557,11 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
             **self.admin_site.each_context(request),
             "title": "Celebrations",
             "opts": self.model._meta,
-            "days": days,
-            "window_choices": CELEBRATION_WINDOW_CHOICES,
+            "period": period,
+            "period_label": period_label,
+            "period_choices": [
+                (value, period_bounds(value)[2]) for value in PERIODS
+            ],
             "birthdays": birthdays,
             "anniversaries": anniversaries,
             "birthday_greeting": combined_birthday_greeting(birthdays),
@@ -573,22 +572,6 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
         }
         return render(request, "admin/people/person/celebrations.html", context)
 
-    @staticmethod
-    def _celebration_window(request) -> int:
-        """`?days=` from the query string, clamped.
-
-        A hand-edited URL is not an error worth a 500 on a page the
-        Secretariat opens every Sunday: anything unreadable, negative or
-        absurd falls back to the default rather than failing.
-        """
-        raw = request.GET.get("days")
-        try:
-            days = int(raw)
-        except (TypeError, ValueError):
-            return DEFAULT_WINDOW_DAYS
-        if days < 1 or days > MAX_WINDOW_DAYS:
-            return DEFAULT_WINDOW_DAYS
-        return days
 
     def missing_data_view(self, request):
         """The paper chase list: everyone with a gap, and exactly what to ask for.

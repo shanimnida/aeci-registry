@@ -76,7 +76,7 @@ whole sections. Everything here is explained fully further down.
 4. [Render — the application](#4-render--the-application)
 5. [First deploy](#5-first-deploy)
 6. [Setting ALLOWED_HOSTS](#6-setting-allowed_hosts)
-7. [The five role groups and the first accounts](#7-the-five-role-groups-and-the-first-accounts)
+7. [The four role groups and the first accounts](#7-the-four-role-groups-and-the-first-accounts)
 8. [Seeding the officers from the CSV](#8-seeding-the-officers-from-the-csv)
 9. [Cloudflare R2 — storage for scanned forms](#9-cloudflare-r2--storage-for-scanned-forms)
 10. [Scheduling the two jobs](#10-scheduling-the-two-jobs)
@@ -277,7 +277,7 @@ set it to, and what happens if it's wrong or left out:
 
 **What `migrate` did automatically, that you don't do by hand**: it both
 created every table the application needs *and* created the five role
-groups (ICT, Secretariat, Treasurer, Board, Chairperson) with their
+groups (ICT, Secretariat, Board, Chairperson) with their
 permissions already assigned, via a migration
 (`core/migrations/0002_create_groups.py`) that ships with the code. You
 don't do anything separate to get the groups — they exist the moment
@@ -307,7 +307,7 @@ one field away from fixed. If you ever see this after everything was working
 before (a service rename, a Render-side hostname change), come back to this
 section.
 
-## 7. The five role groups and the first accounts
+## 7. The four role groups and the first accounts
 
 **Creating the first ICT superuser.** Render's free instance type does
 **not** provide shell or SSH access — that's a paid-plan feature, along with
@@ -357,7 +357,6 @@ goes in which one, and creating their logins.
 | --- | --- | --- |
 | **ICT** | The ICT Committee members who administer the system. | Everything — including the only group that can create new user accounts (nobody else can), and the only group that can link a login to a Person record (see below). |
 | **Secretariat** | The Secretariat staff who encode member records day to day. | Create and edit Person records, manage households, upload scans. Cannot create logins, and cannot set someone's status to `MEMBER` without a recorded approver. |
-| **Treasurer** | Nobody yet, deliberately. | Zero permissions in this phase — fund release, OR numbers and the ledger are future work. The group exists now so accounts slot in cleanly later; there's no reason to create an actual Treasurer login yet, and doing so would just be a login that can see nothing. |
 | **Board** | The Pastor and Board members. | View full person records, appoint officers and chairpersons, approve membership status changes, read the audit log. |
 | **Chairperson** | The people chairing individual committees (Section 8 seeds six of them from the current officers list). | See only name, mobile number and email for members of *their own* committee — nothing else, and no visibility into any other committee. |
 
@@ -654,7 +653,7 @@ is not something to automate.
       **Registry**, **Committees**, **Records**, and **Administration**
       sections.
 - [ ] **Administration → Groups** lists exactly five: ICT, Secretariat,
-      Treasurer, Board, Chairperson.
+      Board, Chairperson.
 - [ ] **Committees → Committee** lists 12 committees — these come from an
       earlier migration and exist independently of `officers.csv`.
 - [ ] **Registry → People** is **empty** (0 records) until 23 August 2026 —

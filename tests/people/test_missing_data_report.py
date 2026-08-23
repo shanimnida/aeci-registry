@@ -86,12 +86,13 @@ def test_an_anonymous_request_is_refused(client):
 
 
 @pytest.mark.django_db
-def test_a_treasurer_is_refused(client):
-    """Treasurer holds no Person permissions at all (spec section 4,
-    core/migrations/0002_create_groups.py) -- the report must not widen
-    that."""
-    user = User.objects.create_user("treasurer", password="x", is_staff=True)
-    user.groups.add(Group.objects.get(name=groups.TREASURER))
+def test_an_account_with_no_role_is_refused(client):
+    """A staff login with no role yet. This used to be a Treasurer, a group
+    that existed holding no permissions; it was removed 2026-08-24 because
+    the Treasurer has not asked for anything. A group-less account is the
+    same test and now the real case -- ICT creates the login before
+    deciding the role."""
+    user = User.objects.create_user("norole", password="x", is_staff=True)
     client.force_login(user)
     response = client.get(missing_data_url())
     assert response.status_code == 403

@@ -92,8 +92,10 @@ def test_a_chairperson_of_another_committee_is_refused(client):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("group_name", [groups.TREASURER, groups.BOARD])
+@pytest.mark.parametrize("group_name", [groups.BOARD, None])
 def test_roles_the_spec_does_not_list_are_refused(client, group_name):
+    """Spec 7.7 lists the Secretariat, ICT and the Sunshine chairperson.
+    The Board is not on it, and neither is an account with no role yet."""
     client.force_login(make_user(f"u{group_name}", group_name))
 
     assert client.get(celebrations_url()).status_code == 403
@@ -190,21 +192,39 @@ def test_an_empty_window_renders_a_message_not_a_broken_table(client):
 
 
 @pytest.mark.django_db
-def test_the_window_can_be_widened_from_the_query_string(client):
-    birthday_in(45, first_name="Faraway")
-
+def test_the_period_can_be_changed_from_the_query_string(client):
+    """A church works to a weekly rhythm and plans to a monthly one, so the
+    Show buttons offer this week, this month and next month rather than a
+    count of days."""
     client.force_login(make_user("sec", groups.SECRETARIAT))
-    assert "Faraway" not in client.get(celebrations_url()).content.decode()
-    assert "Faraway" in client.get(celebrations_url(), {"days": 60}).content.decode()
+
+    for period in ("week", "month", "next-month"):
+        assert client.get(celebrations_url(), {"period": period}).status_code == 200
 
 
 @pytest.mark.django_db
-def test_a_nonsense_window_falls_back_instead_of_erroring(client):
+def test_this_week_is_narrower_than_this_month(client):
+    """Somebody whose birthday is late in the month is on the month view and
+    not on the week view -- unless the month happens to be nearly over, so
+    this asserts the relationship rather than a fixed date."""
+    from people.celebrations import period_bounds
+
+    week_first, week_last, _ = period_bounds("week")
+    month_first, month_last, _ = period_bounds("month")
+
+    assert (week_last - week_first).days == 6
+    assert month_first <= month_last
+    assert (month_last - month_first).days >= 27
+
+
+@pytest.mark.django_db
+def test_a_nonsense_period_falls_back_instead_of_erroring(client):
+    """A hand-edited URL is not worth a 500 on a page the Secretariat opens
+    every Sunday."""
     client.force_login(make_user("sec", groups.SECRETARIAT))
 
-    assert client.get(celebrations_url(), {"days": "banana"}).status_code == 200
-    assert client.get(celebrations_url(), {"days": "-5"}).status_code == 200
-    assert client.get(celebrations_url(), {"days": "99999"}).status_code == 200
+    assert client.get(celebrations_url(), {"period": "banana"}).status_code == 200
+    assert client.get(celebrations_url(), {"period": ""}).status_code == 200
 
 
 # -- audit (spec 7.6) ---------------------------------------------------
@@ -230,7 +250,7 @@ def test_one_access_log_entry_is_written_for_the_whole_report(client):
 def test_a_refused_user_leaves_no_log_entry(client):
     """R15's rule: for a log whose purpose is answering an RA 10173
     complaint, a false entry is worse than a missing one."""
-    client.force_login(make_user("treas", groups.TREASURER))
+    client.force_login(make_user("norole", None))
     client.get(celebrations_url())
 
     assert AccessLog.objects.count() == 0

@@ -35,16 +35,15 @@
 
     <h1 class="text-2xl font-semibold mb-1">Celebrations</h1>
     <p class="text-sm text-base-500 dark:text-base-400 mb-6">
-        Birthdays and wedding anniversaries in the next {{ days }} days.
-        Dates show the day and month only.
+        {{ period_label }}. Dates show the day and month only.
     </p>
 
     <div class="no-print mb-6 flex flex-wrap gap-2 items-center text-sm">
         <span class="text-base-500 dark:text-base-400">Show:</span>
-        {% for choice in window_choices %}
-            <a href="?days={{ choice }}"
-               class="px-3 py-1 rounded border {% if choice == days %}bg-primary-600 text-white border-primary-600{% else %}border-base-200 dark:border-base-700{% endif %}">
-                {{ choice }} days
+        {% for value, label in period_choices %}
+            <a href="?period={{ value }}"
+               class="px-3 py-1 rounded border {% if value == period %}bg-primary-600 text-white border-primary-600{% else %}border-base-200 dark:border-base-700{% endif %}">
+                {{ label }}
             </a>
         {% endfor %}
         <button type="button" onclick="window.print()"
@@ -81,7 +80,7 @@
                 {% endfor %}
             </ul>
         {% else %}
-            <p class="text-base-500 dark:text-base-400">No birthdays in this window.</p>
+            <p class="text-base-500 dark:text-base-400">No birthdays this period.</p>
         {% endif %}
     </section>
 
@@ -113,7 +112,7 @@
                 {% endfor %}
             </ul>
         {% else %}
-            <p class="text-base-500 dark:text-base-400">No anniversaries in this window.</p>
+            <p class="text-base-500 dark:text-base-400">No anniversaries this period.</p>
         {% endif %}
     </section>
 

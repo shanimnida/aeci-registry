@@ -414,31 +414,32 @@ member's complaint that their address circulated.
 Five Django groups. A sixth conceptual role, Member, exists in the design and receives
 no login in Phase A.
 
-| Capability | ICT | Secretariat | Treasurer | Board / Pastor | Chairperson |
-| --- | :--: | :--: | :--: | :--: | :--: |
-| Create / edit Person records | ✅ | ✅ | — | — | — |
-| View full Person record | ✅ | ✅ | — | ✅ | ⚠️ |
-| Assign `MEM-` number | ✅ | ✅ | — | — | — |
-| Set status → `MEMBER` | ✅ | ✅ \* | — | ✅ | — |
-| Manage households & children | ✅ | ✅ | — | — | — |
-| Edit committee rosters | ✅ | ✅ | — | ✅ | own only |
-| Appoint officers / chairpersons | ✅ | — | — | ✅ | — |
-| Upload form scans | ✅ | ✅ | — | — | — |
-| View own committee roster | ✅ | ✅ | — | oversight only | ✅ |
-| Create user accounts | ✅ | — | — | — | — |
-| Read audit log | ✅ | — | — | ✅ | — |
-| Hard-delete anything | ✅ | — | — | — | — |
+| Capability | ICT | Secretariat | Board / Pastor | Chairperson |
+| --- | :--: | :--: | :--: | :--: |
+| Create / edit Person records | ✅ | ✅ | — | — |
+| View full Person record | ✅ | ✅ | ✅ | ⚠️ |
+| Assign `MEM-` number | ✅ | ✅ | — | — |
+| Set status → `MEMBER` | ✅ | ✅ \* | ✅ | — |
+| Manage households & children | ✅ | ✅ | — | — |
+| Edit committee rosters | ✅ | ✅ | ✅ | own only |
+| Appoint officers / chairpersons | ✅ | — | ✅ | — |
+| Upload form scans | ✅ | ✅ | — | — |
+| View own committee roster | ✅ | ✅ | oversight only | ✅ |
+| Create user accounts | ✅ | — | — | — |
+| Read audit log | ✅ | — | ✅ | — |
+| Hard-delete anything | ✅ | — | — | — |
 
 \* The Secretariat *records* an acceptance, supplying `approved_by`; it does not
 originate one. The required approver field is how D8 is enforced in code.
 
-**The Treasurer group holds no Phase A capabilities.** Every cell in its column is
-empty by design: the Treasurer's work — fund release, OR numbers, the ledger — lives
-in subsystems B and C. The group is created now so that accounts and group membership
-are in place before those subsystems land, and so the separation of duties above is
-stated completely. If it proves confusing to have a login that can see nothing, defer
-creating Treasurer accounts until Phase B; the group definition costs nothing either
-way.
+**There is no Treasurer group.** One existed, holding no permissions, reserved for
+the finance subsystem. It was removed on 2026-08-24 at the church's decision: the
+Treasurer has not asked for anything, so subsystem C is not merely unbuilt but
+unconfirmed, and a role granting nothing is a checkbox on the account form that
+quietly does nothing — while a login that signs in to an empty admin reads as broken
+rather than as pending. If and when the finance work is real, the group is one
+migration. The Treasurer **position** — the church office itself, whose appointments
+are part of the corporate record (§7.6) — is unaffected and still seeded.
 
 ⚠️ A Chairperson sees **name, mobile number and email** for members of their own
 committee. Home address, birthdate, civil status, household, children and emergency

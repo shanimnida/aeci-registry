@@ -1,10 +1,16 @@
 ICT = "ICT"
 SECRETARIAT = "Secretariat"
-TREASURER = "Treasurer"
 BOARD = "Board"
 CHAIRPERSON = "Chairperson"
 
-ALL_GROUPS = (ICT, SECRETARIAT, TREASURER, BOARD, CHAIRPERSON)
+# Four roles. A Treasurer group existed until 2026-08-24, holding no
+# permissions, reserved for the finance subsystem -- removed because the
+# Treasurer has not asked for anything, so that subsystem is not merely
+# unbuilt but unconfirmed, and a role that grants nothing is a checkbox
+# on the account form that quietly does nothing. See
+# core/migrations/0005_remove_treasurer_group.py. The Treasurer POSITION
+# -- the church office itself -- is unaffected and still seeded.
+ALL_GROUPS = (ICT, SECRETARIAT, BOARD, CHAIRPERSON)
 
 # A user in more than just Chairperson already has a wider lens on the data;
 # the narrow five-field, own-committee view is only for Chairperson-only users.

@@ -74,7 +74,7 @@ def test_a_birthday_beyond_the_week_is_not_on_the_dashboard(client):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("group_name", [groups.TREASURER, groups.BOARD])
+@pytest.mark.parametrize("group_name", [groups.BOARD, None])
 def test_a_role_refused_the_report_does_not_get_it_on_the_dashboard(client, group_name):
     """Otherwise the 403 on the full page is decoration."""
     birthday_in(2, "Ana")

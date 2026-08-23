@@ -13,6 +13,41 @@ admin.site.unregister(User)
 admin.site.unregister(Group)
 
 
+class AegisUserCreationForm(UserCreationForm):
+    """Create a usable account in one screen, not two.
+
+    The stock add form asks only for a username and a password, then drops
+    you on the edit page to tick things. `is_staff` defaults to False there,
+    and Django's admin refuses any account without it — with the message
+    "Please enter the correct username and password for a staff account",
+    which reads as a wrong password. So the first account ICT created could
+    not log in and nothing on screen said why.
+
+    AEGIS has no other kind of user: member logins do not exist (D4), so
+    every account made here is for somebody who needs to get in. Staff
+    status therefore starts ticked, and the role is chosen on the same
+    screen rather than being a second trip nobody knows to make.
+    """
+
+    class Meta(UserCreationForm.Meta):
+        fields = ("username", "is_staff", "groups")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["is_staff"].initial = True
+        self.fields["is_staff"].label = "Can log in"
+        self.fields["is_staff"].help_text = (
+            "Leave this ticked. Without it the account exists but cannot sign "
+            "in, and the login page reports it as a wrong password."
+        )
+        self.fields["groups"].widget = forms.CheckboxSelectMultiple(
+            choices=self.fields["groups"].choices
+        )
+        self.fields["groups"].help_text = (
+            "The role this account holds. Almost everyone has exactly one."
+        )
+
+
 class AegisUserChangeForm(UserChangeForm):
     """The account form, with Django's per-user permission picker removed.
 
@@ -52,7 +87,7 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
     # as bare unstyled inputs inside a themed shell — the "create a user"
     # screen worst of all, since it is nothing but the two password boxes.
     form = AegisUserChangeForm
-    add_form = UserCreationForm
+    add_form = AegisUserCreationForm
     change_password_form = AdminPasswordChangeForm
 
     # The dual-list shuttle widget, gone with the field it was for.
@@ -95,14 +130,12 @@ class AegisUserAdmin(UserAdmin, ModelAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("username", "password1", "password2"),
+                "fields": ("username", "password1", "password2", "is_staff", "groups"),
                 "description": (
                     "Set a temporary password and give it to the person in "
-                    "person or by phone, not in writing. They can change it "
-                    "afterwards. On the next screen, tick <strong>Staff "
-                    "status</strong> and choose their group — without staff "
-                    "status they cannot log in at all, even with the right "
-                    "password."
+                    "person or by phone, not in writing — they can change it "
+                    "afterwards. Choose their role below; the account is ready "
+                    "to use as soon as you save."
                 ),
             },
         ),

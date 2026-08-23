@@ -73,13 +73,27 @@ this page exist for them at all — see committees/appointing.py.
 
                 <label class="text-sm">
                     <span class="block text-xs uppercase text-base-400 dark:text-base-500 mb-1">Appoint</span>
-                    <select name="person" required
-                            class="border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
+                    {% comment %}
+                    A search box in front of the list, not a longer list. For a
+                    chairperson the options are their own roster and short; for
+                    ICT and the Board they are the whole congregation, and
+                    scrolling a few hundred names to find one is not a thing
+                    anyone should be asked to do. Typing filters the options
+                    below; with JavaScript off the plain select still works.
+                    {% endcomment %}
+                    <input type="search" placeholder="Type a name to narrow the list…"
+                           data-person-filter="person-{{ block.committee.pk }}"
+                           autocomplete="off"
+                           class="block w-64 mb-1 border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
+                    <select name="person" required id="person-{{ block.committee.pk }}"
+                            class="block w-64 border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
                         <option value="">Choose a person…</option>
                         {% for person in block.candidates %}
-                            <option value="{{ person.pk }}">{{ person.full_name }}</option>
+                            <option value="{{ person.pk }}">{{ person.full_name }}{% if person.nickname %} "{{ person.nickname }}"{% endif %}{% if person.member_no %} · {{ person.member_no }}{% endif %}</option>
                         {% endfor %}
                     </select>
+                    <span class="block text-xs text-base-400 dark:text-base-500 mt-1"
+                          data-person-count="person-{{ block.committee.pk }}"></span>
                 </label>
 
                 <label class="text-sm">
@@ -112,4 +126,57 @@ this page exist for them at all — see committees/appointing.py.
     {% endfor %}
 
 </div>
+<script>
+    // Progressive enhancement: every option is already in the page, so the
+    // select works untouched if this never runs. Options are held in JS and
+    // the list rebuilt on each keystroke, because hiding an <option> with
+    // CSS is not reliable across browsers.
+    document.querySelectorAll("[data-person-filter]").forEach(function (box) {
+        var select = document.getElementById(box.dataset.personFilter);
+        var counter = document.querySelector(
+            '[data-person-count="' + box.dataset.personFilter + '"]'
+        );
+        if (!select) { return; }
+
+        var all = Array.prototype.slice.call(select.options).map(function (option) {
+            return { value: option.value, text: option.text };
+        });
+        var placeholder = all[0];
+
+        function report(shown) {
+            if (!counter) { return; }
+            var total = all.length - 1;
+            if (!box.value.trim()) {
+                counter.textContent = total + (total === 1 ? " person" : " people");
+            } else if (shown === 0) {
+                counter.textContent = "Nobody on this committee matches that.";
+            } else {
+                counter.textContent = shown + " of " + total;
+            }
+        }
+
+        function render() {
+            var needle = box.value.trim().toLowerCase();
+            var chosen = select.value;
+            select.innerHTML = "";
+            select.appendChild(new Option(placeholder.text, placeholder.value));
+            var shown = 0;
+            all.slice(1).forEach(function (entry) {
+                if (needle && entry.text.toLowerCase().indexOf(needle) === -1) { return; }
+                var option = new Option(entry.text, entry.value);
+                if (entry.value === chosen) { option.selected = true; }
+                select.appendChild(option);
+                shown += 1;
+            });
+            report(shown);
+        }
+
+        box.addEventListener("input", render);
+        // Enter in the search box should not submit a half-filled form.
+        box.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") { event.preventDefault(); }
+        });
+        render();
+    });
+</script>
 {% endblock %}

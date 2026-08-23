@@ -141,11 +141,69 @@ def greetable_people():
     )
 
 
-def upcoming_birthdays(start=None, days=DEFAULT_WINDOW_DAYS) -> list[Celebration]:
-    start = start or timezone.localdate()
+# The periods the Show buttons offer, requested 2026-08-24. A church works
+# to a weekly rhythm (a Sunday service) and plans to a monthly one, so
+# "this week" and "this month" are the questions actually being asked --
+# "the next 30 days" was an answer to a question nobody phrased that way.
+PERIODS = ("week", "month", "next-month")
+DEFAULT_PERIOD = "month"
+
+
+def period_bounds(period, on=None):
+    """(first day, last day, label) for one of PERIODS.
+
+    Calendar periods, not rolling ones, and they include days already past.
+    That is deliberate: the page answers "has everyone been greeted this
+    week", and a Wednesday view that hid Monday's birthday would answer it
+    wrongly. The rolling window is still available through `?days=` for
+    anyone who wants "the next N days" -- and is what the dashboard panel
+    uses, where the question really is "what is coming".
+    """
+    on = on or timezone.localdate()
+    if period == "week":
+        # Sunday to Saturday. The Philippine convention, and the week a
+        # church actually plans around, since the service anchors it.
+        start = on - dt.timedelta(days=(on.weekday() + 1) % 7)
+        return start, start + dt.timedelta(days=6), "This week"
+    if period == "next-month":
+        first = (on.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
+        return first, _end_of_month(first), first.strftime("%B")
+    first = on.replace(day=1)
+    return first, _end_of_month(first), "This month"
+
+
+def _end_of_month(first_of_month):
+    following = (first_of_month + dt.timedelta(days=32)).replace(day=1)
+    return following - dt.timedelta(days=1)
+
+
+def _in_range(day, first, last):
+    """The occurrence of `day` between `first` and `last`, or None.
+
+    Both years are tried so a period spanning the year end still matches,
+    which "next month" does every December.
+    """
+    for year in (first.year, last.year):
+        occurrence = _occurrence(day, year)
+        if first <= occurrence <= last:
+            return occurrence
+    return None
+
+
+def celebrations_for_period(period, on=None):
+    """Birthdays and anniversaries in a calendar period, as one call."""
+    first, last, label = period_bounds(period, on)
+    return (
+        birthdays_between(first, last),
+        anniversaries_between(first, last),
+        label,
+    )
+
+
+def birthdays_between(first, last) -> list[Celebration]:
     entries = []
     for person in greetable_people().filter(date_of_birth__isnull=False):
-        occurrence = _in_window(person.date_of_birth, start, days)
+        occurrence = _in_range(person.date_of_birth, first, last)
         if occurrence is None:
             continue
         names = _display_name(person)
@@ -161,7 +219,7 @@ def upcoming_birthdays(start=None, days=DEFAULT_WINDOW_DAYS) -> list[Celebration
     return sorted(entries, key=lambda entry: (entry.date, entry.subtitle))
 
 
-def upcoming_anniversaries(start=None, days=DEFAULT_WINDOW_DAYS) -> list[Celebration]:
+def anniversaries_between(first, last) -> list[Celebration]:
     """Wedding anniversaries, from `Household.date_of_marriage`.
 
     The couple is the household's HEAD and SPOUSE rows, and the exclusions
@@ -176,14 +234,13 @@ def upcoming_anniversaries(start=None, days=DEFAULT_WINDOW_DAYS) -> list[Celebra
     whose spouse never submitted their own form still has the date from the
     paper -- see the R33 fix in imports/services.py.
     """
-    start = start or timezone.localdate()
     households = Household.objects.filter(
         date_of_marriage__isnull=False
     ).prefetch_related("members__person")
 
     entries = []
     for household in households:
-        occurrence = _in_window(household.date_of_marriage, start, days)
+        occurrence = _in_range(household.date_of_marriage, first, last)
         if occurrence is None:
             continue
         couple = [
@@ -208,6 +265,18 @@ def upcoming_anniversaries(start=None, days=DEFAULT_WINDOW_DAYS) -> list[Celebra
             )
         )
     return sorted(entries, key=lambda entry: (entry.date, entry.subtitle))
+
+
+def upcoming_birthdays(start=None, days=DEFAULT_WINDOW_DAYS) -> list[Celebration]:
+    """The rolling window, still used by the dashboard panel where the
+    question really is "what is coming" rather than "this month"."""
+    start = start or timezone.localdate()
+    return birthdays_between(start, start + dt.timedelta(days=days))
+
+
+def upcoming_anniversaries(start=None, days=DEFAULT_WINDOW_DAYS) -> list[Celebration]:
+    start = start or timezone.localdate()
+    return anniversaries_between(start, start + dt.timedelta(days=days))
 
 
 def combined_birthday_greeting(entries) -> str:

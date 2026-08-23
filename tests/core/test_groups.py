@@ -104,7 +104,7 @@ def test_ict_can_create_logins_but_the_board_cannot():
 @pytest.mark.django_db
 def test_nobody_but_ict_may_delete_a_person():
     """Spec section 4: deletion is a status change, not a row removal."""
-    for name in (groups.SECRETARIAT, groups.BOARD, groups.CHAIRPERSON, groups.TREASURER):
+    for name in (groups.SECRETARIAT, groups.BOARD, groups.CHAIRPERSON):
         assert "delete_person" not in _codenames(name)
     assert "delete_person" in _codenames(groups.ICT)
 
@@ -141,9 +141,27 @@ def test_chairpersons_may_only_view_people():
 
 
 @pytest.mark.django_db
-def test_the_treasurer_group_is_empty_in_phase_a():
-    """Spec section 4: the Treasurer's work lives in Phases B and C."""
-    assert Group.objects.get(name=groups.TREASURER).permissions.count() == 0
+def test_the_treasurer_group_no_longer_exists():
+    """It was created empty, reserved for a finance subsystem. Removed
+    2026-08-24: the Treasurer has not asked for anything, so that subsystem
+    is not merely unbuilt but unconfirmed, and a group granting nothing is a
+    checkbox on the account form that quietly does nothing.
+
+    The Treasurer POSITION -- the church office whose appointments are
+    recorded -- is a different thing and still seeded; see
+    test_the_treasurer_office_itself_still_exists below."""
+    assert not Group.objects.filter(name="Treasurer").exists()
+    assert "Treasurer" not in groups.ALL_GROUPS
+
+
+@pytest.mark.django_db
+def test_the_treasurer_office_itself_still_exists():
+    """Removing the login group must not remove the church office. The
+    Treasurer is a real officer and their appointments are part of the
+    corporate record (spec 7.6)."""
+    from committees.models import Position
+
+    assert Position.objects.filter(code="treasurer").exists()
 
 
 @pytest.mark.django_db
@@ -184,6 +202,6 @@ def test_no_non_ict_group_can_both_create_a_login_and_grant_membership():
     design is protecting is among the other four: none of them may create a
     login at all, so none of them can pair that with granting membership.
     """
-    for name in (groups.SECRETARIAT, groups.TREASURER, groups.BOARD, groups.CHAIRPERSON):
+    for name in (groups.SECRETARIAT, groups.BOARD, groups.CHAIRPERSON):
         codenames = _codenames(name)
         assert not ("add_user" in codenames and "change_person" in codenames), name

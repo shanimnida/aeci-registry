@@ -14,6 +14,7 @@ and is never used in fixtures or tests.
 
 import pytest
 from django.contrib.auth.models import Group, Permission, User
+from django.test import Client
 from django.urls import reverse
 
 from core import groups
@@ -134,15 +135,51 @@ def test_the_changelist_names_each_accounts_role(client, ict, volunteer):
 
 
 @pytest.mark.django_db
-def test_the_add_page_warns_about_the_thing_everyone_forgets(client, ict):
-    """docs/DEPLOYMENT.md section 7 calls staff status the single most
-    common thing to forget, and a doc is not where somebody looks
-    mid-task."""
+def test_the_add_page_produces_an_account_that_can_actually_log_in(client, ict):
+    """The bug this closes: the stock add form asks only for a username and
+    a password, is_staff defaults to False, and Django's admin then refuses
+    the account with "correct username and password for a staff account" --
+    which reads as a wrong password. The first account ICT created could not
+    log in and nothing said why.
+
+    AEGIS has no other kind of user (D4: no member logins), so every account
+    made here needs to get in. The box is on the form and starts ticked.
+    """
     client.force_login(ict)
 
     body = client.get(reverse("admin:auth_user_add")).content.decode()
 
-    assert "Staff status" in body
+    assert 'name="is_staff"' in body
+    assert "Can log in" in body
+    assert 'name="groups"' in body
+
+
+@pytest.mark.django_db
+def test_an_account_created_through_the_add_form_can_log_in(client, ict):
+    """The end of it: create through the real form, then actually sign in
+    as that person."""
+    client.force_login(ict)
+    secretariat = Group.objects.get(name=groups.SECRETARIAT)
+
+    client.post(
+        reverse("admin:auth_user_add"),
+        {
+            "username": "mabel",
+            "password1": "qweqweqwe",
+            "password2": "qweqweqwe",
+            "is_staff": "on",
+            "groups": [secretariat.pk],
+        },
+        follow=True,
+    )
+
+    created = User.objects.get(username="mabel")
+    assert created.is_staff
+    assert list(created.groups.values_list("name", flat=True)) == [groups.SECRETARIAT]
+
+    fresh = Client()
+    assert fresh.login(username="mabel", password="qweqweqwe")
+    assert fresh.get(reverse("admin:index")).status_code == 200
 
 
 @pytest.mark.django_db
