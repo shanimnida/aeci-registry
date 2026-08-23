@@ -1,0 +1,115 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% comment %}
+Committee appointments, one committee per block: who holds each office now,
+and a form to appoint the next one.
+
+The screen is built around a rule rather than around a table. One person
+holds an office at a time, so appointing a new secretary while one is
+serving is refused — which means "End" has to be right there beside the
+current holder, not on another screen. The order of the page follows the
+order of the job: see who holds it, end it if it is over, appoint the next.
+
+A chairperson sees only committees they lead, only the two roles theirs to
+fill, and only people already on that roster. That last part is what lets
+this page exist for them at all — see committees/appointing.py.
+{% endcomment %}
+
+{% block content %}
+<div class="max-w-4xl">
+
+    <h1 class="text-2xl font-semibold mb-1">Committee appointments</h1>
+    <p class="text-sm text-base-500 dark:text-base-400 mb-6">
+        {% if is_chairperson_only %}
+            You can appoint a co-chair and a secretary for the committees you
+            lead, from the people already serving on them.
+        {% else %}
+            The Board appoints each committee's chairperson. Each chairperson
+            appoints their own vice and secretary.
+        {% endif %}
+    </p>
+
+    {% for block in blocks %}
+        <section class="mb-8 border border-base-200 dark:border-base-700 rounded">
+            <h2 class="text-lg font-semibold px-4 py-3 border-b border-base-200 dark:border-base-700">
+                {{ block.committee.name }}
+            </h2>
+
+            {% if block.officers %}
+                <ul>
+                    {% for entry in block.officers %}
+                        <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-base-200 dark:border-base-700">
+                            <span class="text-sm">
+                                <span class="text-base-500 dark:text-base-400">{{ entry.membership.get_role_display }}</span>
+                                <strong class="ml-2">{{ entry.membership.person.full_name }}</strong>
+                                <span class="text-base-500 dark:text-base-400 ml-2">on this committee since {{ entry.membership.date_joined|date:"j M Y" }}</span>
+                            </span>
+                            {% if entry.can_end %}
+                                <form method="post" class="shrink-0">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="end">
+                                    <input type="hidden" name="committee" value="{{ block.committee.pk }}">
+                                    <input type="hidden" name="membership" value="{{ entry.membership.pk }}">
+                                    <button type="submit"
+                                            class="px-3 py-1 rounded border border-base-300 dark:border-base-600 text-sm"
+                                            onclick="return confirm('End {{ entry.membership.person.full_name|escapejs }} as {{ entry.membership.get_role_display|escapejs }} of {{ block.committee.name|escapejs }}, effective today?');">
+                                        End
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="px-4 py-3 text-sm text-base-500 dark:text-base-400 border-b border-base-200 dark:border-base-700">
+                    No officers recorded yet.
+                </p>
+            {% endif %}
+
+            <form method="post" class="px-4 py-3 flex flex-wrap items-end gap-3">
+                {% csrf_token %}
+                <input type="hidden" name="committee" value="{{ block.committee.pk }}">
+
+                <label class="text-sm">
+                    <span class="block text-xs uppercase text-base-400 dark:text-base-500 mb-1">Appoint</span>
+                    <select name="person" required
+                            class="border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
+                        <option value="">Choose a person…</option>
+                        {% for person in block.candidates %}
+                            <option value="{{ person.pk }}">{{ person.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label class="text-sm">
+                    <span class="block text-xs uppercase text-base-400 dark:text-base-500 mb-1">As</span>
+                    <select name="role" required
+                            class="border border-base-300 dark:border-base-600 rounded px-2 py-1 bg-transparent">
+                        {% for value, label in role_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <button type="submit"
+                        class="px-4 py-2 rounded bg-primary-600 text-white text-sm font-medium">
+                    Appoint
+                </button>
+            </form>
+
+            {% if not block.candidates %}
+                <p class="px-4 pb-3 -mt-1 text-sm text-base-500 dark:text-base-400">
+                    Nobody is serving on this committee yet, so there is nobody to
+                    appoint from. The Secretariat adds members first.
+                </p>
+            {% endif %}
+        </section>
+    {% empty %}
+        <p class="text-base-500 dark:text-base-400">
+            You do not lead any committee, so there is nothing to appoint here.
+        </p>
+    {% endfor %}
+
+</div>
+{% endblock %}

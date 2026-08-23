@@ -1,9 +1,10 @@
 from collections import defaultdict
 
 from django.contrib import admin, messages
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models.constants import LOOKUP_SEP
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.urls import path, reverse
 from django.utils.html import format_html
 from simple_history.admin import SimpleHistoryAdmin
@@ -12,6 +13,15 @@ from unfold.admin import ModelAdmin, TabularInline
 from committees.models import (
     Appointment, Committee, CommitteeFunction, CommitteeMembership, CommitteeRole, Position,
 )
+from committees.appointing import (
+    appointable_committees,
+    appointable_people,
+    appointable_roles,
+    current_officers,
+    may_appoint,
+    may_end,
+)
+from committees.derived import bands_for_committee, derived_places, unplaceable_count
 from core.groups import is_chairperson_only
 from people.admin import CHAIRPERSON_FIELDS
 from records.models import AccessLog
@@ -72,11 +82,15 @@ def overview_display_name(person):
     return name
 
 
-def overview_committee_card(committee, memberships):
+def overview_committee_card(committee, memberships, derived=()):
     """One committee's at-a-glance summary for the overview grid.
 
     `memberships` is already scoped to active rows a caller may see (see
     CommitteeMembershipAdmin.get_queryset) and to just this committee.
+    `derived` holds age-band places (committees/derived.py), which count
+    toward the headline number because they are real members of that
+    committee by the Board's rule -- but never toward the chairperson,
+    secretary or oversight gaps, which are offices nobody holds by age.
     """
     chair = next((m for m in memberships if m.role == CommitteeRole.CHAIRPERSON), None)
     secretary = next((m for m in memberships if m.role == CommitteeRole.SECRETARY), None)
@@ -84,8 +98,9 @@ def overview_committee_card(committee, memberships):
     oversight = [m for m in memberships if m.role == CommitteeRole.OVERSIGHT]
     return {
         "committee": committee,
-        "count": len(memberships),
-        "is_empty": not memberships,
+        "count": len(memberships) + len(derived),
+        "derived_count": len(derived),
+        "is_empty": not memberships and not derived,
         "missing_chair": chair is None,
         "missing_secretary": secretary is None,
         "missing_oversight": not oversight,
@@ -97,26 +112,48 @@ def overview_committee_card(committee, memberships):
 
 
 def overview_roster_row(membership):
+    """One roster line, from either a real membership or a derived place.
+
+    Both carry `person` and a function name; only a real membership has a
+    `function` foreign key, so the derived stand-in supplies
+    `function_name` instead and this reads whichever is there.
+    """
     person = membership.person
+    is_derived = getattr(membership, "is_derived", False)
+    if is_derived:
+        function = membership.function_name
+    else:
+        function = membership.function.name if membership.function_id else ""
     return {
         "name": overview_display_name(person),
-        "function": membership.function.name if membership.function_id else "",
+        "function": function,
         "mobile_number": person.mobile_number,
         "email": person.email,
+        "is_derived": is_derived,
+        "band": getattr(membership, "band", ""),
     }
 
 
-def overview_roster_sections(memberships):
-    """Group a committee's memberships into the four role sections, in
-    display order, each carrying its own gap message when it applies.
+def overview_roster_sections(memberships, derived=()):
+    """Group a committee's memberships into role sections, in display order,
+    each carrying its own gap message when it applies.
+
+    `derived` holds places that follow from the Board's age bands rather
+    than from a recorded decision (see committees/derived.py). They join the
+    Members section, since that is what they are, and each row says so --
+    a roster that showed them as indistinguishable from a membership
+    somebody typed would be claiming a decision nobody made.
     """
     sections = []
     for label, role in ROSTER_ROLE_ORDER:
         rows = [m for m in memberships if m.role == role]
+        entries = [overview_roster_row(m) for m in rows]
+        if role == CommitteeRole.MEMBER:
+            entries += [overview_roster_row(place) for place in derived]
         sections.append({
             "label": label,
-            "rows": [overview_roster_row(m) for m in rows],
-            "gap_text": ROSTER_GAP_TEXT.get(role) if not rows else None,
+            "rows": entries,
+            "gap_text": ROSTER_GAP_TEXT.get(role) if not entries else None,
         })
     return sections
 
@@ -308,10 +345,20 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
         else:
             committees = Committee.objects.filter(is_active=True).order_by("name")
 
-        cards = [
-            overview_committee_card(committee, by_committee.get(committee.pk, []))
-            for committee in committees
-        ]
+        cards = []
+        for committee in committees:
+            rows = by_committee.get(committee.pk, [])
+            # A chairperson's own view is already narrowed to their roster;
+            # adding an age-derived list would show them people they were
+            # never given. The count they see stays what get_queryset allows.
+            derived = (
+                []
+                if chairperson_only
+                else derived_places(
+                    committee, exclude_person_ids={row.person_id for row in rows}
+                )
+            )
+            cards.append(overview_committee_card(committee, rows, derived))
 
         AccessLog.record(
             user=request.user, report="committee overview", ip=request.META.get("REMOTE_ADDR"),
@@ -345,6 +392,14 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
             # refuse outright rather than render a roster of nothing.
             raise PermissionDenied
 
+        derived = (
+            []
+            if is_chairperson_only(request.user)
+            else derived_places(
+                committee, exclude_person_ids={m.person_id for m in memberships}
+            )
+        )
+
         AccessLog.record(
             user=request.user,
             report=f"committee roster — {committee.name}"[:120],
@@ -356,9 +411,12 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
             "title": committee.name,
             "opts": self.model._meta,
             "committee": committee,
-            "count": len(memberships),
+            "count": len(memberships) + len(derived),
             "functions": list(committee.functions.all()),
-            "sections": overview_roster_sections(memberships),
+            "sections": overview_roster_sections(memberships, derived),
+            "derived_count": len(derived),
+            "age_rule_applies": bool(bands_for_committee(committee.code)),
+            "unplaceable": unplaceable_count() if bands_for_committee(committee.code) else 0,
         }
         return render(
             request, "admin/committees/committeemembership/committee_detail.html", context
@@ -377,3 +435,167 @@ class AppointmentAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_filter = ("position",)
     search_fields = ("person__last_name", "person__first_name")
     autocomplete_fields = ("person",)
+
+    # -- committee appointments ----------------------------------------
+
+    def get_urls(self):
+        custom = [
+            path(
+                "committees/",
+                self.admin_site.admin_view(self.appoint_view),
+                name="committees_appointment_appoint",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def appoint_view(self, request):
+        """One place for committee appointments: chairpersons, co-chairs,
+        secretaries and Board oversight.
+
+        Requested 2026-08-24, and it is the Board's own structure: the Board
+        appoints each committee's chairperson, and each chairperson appoints
+        their own vice and secretary.
+
+        Access does NOT come from a model permission. The Chairperson group
+        is deliberately left without add_committeemembership, because a
+        chairperson who could reach the ordinary add form could put anyone
+        on any committee in any role. The gate is committees.appointing,
+        which narrows by committee, by role and by person all at once -- see
+        that module for why a chairperson picking from their own roster is
+        what makes this screen reachable by them at all.
+        """
+        if not may_appoint(request.user):
+            raise PermissionDenied
+
+        committees = list(appointable_committees(request.user))
+        roles = appointable_roles(request.user)
+
+        if request.method == "POST":
+            return self._handle_appointment(request, committees, roles)
+
+        AccessLog.record(
+            user=request.user,
+            report="committee appointments",
+            ip=request.META.get("REMOTE_ADDR"),
+        )
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Committee appointments",
+            "opts": self.model._meta,
+            "today": timezone.localdate().isoformat(),
+            "role_choices": [
+                (role, CommitteeRole(role).label) for role in roles
+            ],
+            "blocks": [
+                {
+                    "committee": committee,
+                    "officers": [
+                        {
+                            "membership": membership,
+                            "can_end": may_end(request.user, membership),
+                        }
+                        for membership in current_officers(committee)
+                    ],
+                    "candidates": appointable_people(request.user, committee),
+                }
+                for committee in committees
+            ],
+            "is_chairperson_only": is_chairperson_only(request.user),
+        }
+        return render(
+            request, "admin/committees/appointment/appoint.html", context
+        )
+
+    def _handle_appointment(self, request, committees, roles):
+        redirect_to = redirect("admin:committees_appointment_appoint")
+        committee = next(
+            (c for c in committees if str(c.pk) == request.POST.get("committee")), None
+        )
+        if committee is None:
+            self.message_user(
+                request,
+                "That committee is not yours to appoint on.",
+                level=messages.ERROR,
+            )
+            return redirect_to
+
+        if request.POST.get("action") == "end":
+            membership = (
+                CommitteeMembership.objects.active()
+                .filter(pk=request.POST.get("membership"), committee=committee)
+                .first()
+            )
+            if membership is None or not may_end(request.user, membership):
+                self.message_user(
+                    request, "That role is not yours to end.", level=messages.ERROR
+                )
+                return redirect_to
+            membership.date_left = timezone.localdate()
+            membership.updated_by = request.user
+            membership.full_clean()
+            membership.save()
+            self.message_user(
+                request,
+                f"Ended {membership.person.full_name} as "
+                f"{membership.get_role_display()} of {committee.name}.",
+                level=messages.SUCCESS,
+            )
+            return redirect_to
+
+        role = request.POST.get("role")
+        if role not in roles:
+            self.message_user(
+                request, "That role is not yours to appoint.", level=messages.ERROR
+            )
+            return redirect_to
+
+        person = appointable_people(request.user, committee).filter(
+            pk=request.POST.get("person")
+        ).first()
+        if person is None:
+            self.message_user(
+                request,
+                "That person is not one you can appoint on this committee.",
+                level=messages.ERROR,
+            )
+            return redirect_to
+
+        # Somebody already serving on this committee is PROMOTED, not added
+        # again: one person holds one role on a committee at a time (R59),
+        # and their service is continuous -- they joined when they joined and
+        # today they took an office. simple-history records when the role
+        # changed, which is where "since when" for the office itself lives.
+        membership = (
+            CommitteeMembership.objects.active()
+            .filter(committee=committee, person=person)
+            .exclude(date_left__lte=timezone.localdate())
+            .first()
+        )
+        if membership is None:
+            membership = CommitteeMembership(
+                committee=committee,
+                person=person,
+                role=role,
+                date_joined=timezone.localdate(),
+                created_by=request.user,
+                updated_by=request.user,
+            )
+        else:
+            membership.role = role
+            membership.updated_by = request.user
+        try:
+            # The church's rules live in clean() and save() skips it: one
+            # chairperson, one secretary, one role per committee, oversight
+            # only for the Board.
+            membership.full_clean()
+        except ValidationError as error:
+            self.message_user(request, "; ".join(error.messages), level=messages.ERROR)
+            return redirect_to
+        membership.save()
+        self.message_user(
+            request,
+            f"Appointed {person.full_name} as {membership.get_role_display()} "
+            f"of {committee.name}.",
+            level=messages.SUCCESS,
+        )
+        return redirect_to

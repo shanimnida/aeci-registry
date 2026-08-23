@@ -40,6 +40,14 @@ INSTALLED_APPS = [
 # sidebar, colour, typography. None of this touches permissions — every
 # sidebar item's visibility is gated by the same request.user.has_perm(...)
 # checks the underlying ModelAdmin already enforces, not a parallel ruleset.
+def _may_appoint(request) -> bool:
+    """Sidebar visibility for the committee appointments screen. Lazy import
+    for the same reason as below: settings is read before the app registry."""
+    from committees.appointing import may_appoint
+
+    return may_appoint(request.user)
+
+
 def _celebrations_permission(request) -> bool:
     """Sidebar visibility for the Celebrations screen.
 
@@ -127,6 +135,23 @@ UNFOLD = {
                         "icon": "cake",
                         "link": reverse_lazy("admin:people_person_celebrations"),
                         "permission": lambda request: _celebrations_permission(request),
+                    },
+                ],
+            },
+            {
+                "title": _("Appointments"),
+                "separator": True,
+                "items": [
+                    {
+                        # Gated by the view's own rule rather than a model
+                        # permission: the Chairperson group deliberately has
+                        # no add_committeemembership, because a chairperson
+                        # who could reach the ordinary add form could put
+                        # anyone on any committee. See committees/appointing.py.
+                        "title": _("Committee officers"),
+                        "icon": "how_to_reg",
+                        "link": reverse_lazy("admin:committees_appointment_appoint"),
+                        "permission": lambda request: _may_appoint(request),
                     },
                 ],
             },

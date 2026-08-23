@@ -1033,3 +1033,55 @@ Matching deliberately does NOT require a birthdate: half the register has none a
 officers have none by construction, so requiring one would miss precisely the duplicates that
 actually occur. Middle names are compared the same forgiving way child linking does (R43), since
 that is how the Abaigar child pair was created in the first place.
+
+=== AGE BANDS, AND APPOINTMENTS IN ONE PLACE (583 tests) ===
+Both from the Board, relayed 2026-08-24. Bands: children 0-12, juniors 13-15, youths 16-30.
+Juniors are members of the Youth committee but still marked as juniors; youths are on Youth too;
+children on Children's Ministry.
+
+Ruling: R61 — age-band committee places are DERIVED, never written as rows, at the user's choice
+  from three options. A person joins Youth on their thirteenth birthday and leaves after their
+  thirty-first with no job running, no migration and no membership row appearing under a name
+  nobody typed. The alternative — real rows — was rejected on the half nobody asks about: an
+  automatic row has to be automatically ENDED, and the ending is what goes wrong quietly. This also
+  supersedes spec 7.2's "children ageing into Youth" QUEUE, which existed because D8 says the
+  software must never make a membership decision by itself; the Board has now made the decision, so
+  AEGIS is recording a rule rather than inventing one.
+  The band is computed, never stored, for the same reason: a stored band is wrong the morning after
+  a birthday. The cost is that it cannot be filtered in the database the way has_missing_data
+  deliberately can; noted, not paid for until something needs it.
+  Cost if wrong: a derived place carries no date_joined and cannot hold a role, so anyone needing
+  either gets a real membership recorded by hand — which the roster shows alongside and which
+  always wins over the age rule.
+
+Ruling: R62 — juniors are marked with a Youth CommitteeFunction ("Juniors"), not a new role, at the
+  user's choice. CommitteeFunction already exists for exactly this (Sunshine has Ushering,
+  Transport, Benevolence), so it needs no migration and no new concept; a JUNIOR *role* would have
+  been an age band wearing a role's clothes. Derived rows are labelled "by age" on the roster —
+  showing them as indistinguishable from a membership somebody recorded would be claiming a
+  decision nobody made. Chairpersons do NOT get the derived list: their view is scoped to people
+  they were actually given, and an age-derived roster would hand them the congregation.
+
+Ruling: R63 — committee appointments (chairperson, co-chair, secretary, oversight) now live on one
+  screen under Appointments, and a chairperson may appoint their own co-chair and secretary.
+  This closes the objection that blocked chairperson roster management earlier in the session:
+  appointing somebody means finding them, and a chairperson cannot see anyone off their own roster
+  (D12), so an appoint screen looked like it needed a person-picker reaching past the scoping. It
+  does not — a co-chair and a secretary come from the people ALREADY on that committee, so a
+  chairperson picks from the roster they can already see and no withheld field is disclosed.
+  No model permission was granted to the Chairperson group. The gate lives in
+  committees/appointing.py and the view creates the membership itself, so the ordinary "add
+  committee membership" form stays shut to them — a chairperson who could reach that form could put
+  anyone on any committee in any role. A chairperson cannot appoint a CHAIRPERSON (naming your own
+  successor is not yours to do) and cannot end their own chairpersonship.
+
+Ruling: R64 — two consequences of R59 that only surfaced when this screen was built, both fixed.
+  (a) Appointing somebody already serving on the committee is a PROMOTION, not a second row: the
+  view updates their existing membership's role rather than creating one, which is what R59's own
+  error message tells a human to do. Service stays continuous and simple-history records when the
+  role changed.
+  (b) A same-day handover was impossible. active() counts a membership ending today as still active
+  (R2, deliberately), so ending the sitting secretary and appointing the next one on the same
+  afternoon was refused with nowhere to go. The sole-office and one-role clash checks now ignore a
+  membership whose end date has already ARRIVED, while a FUTURE end date still blocks — which is
+  exactly the bypass R12 closed, left closed. Rosters still use active() unchanged.

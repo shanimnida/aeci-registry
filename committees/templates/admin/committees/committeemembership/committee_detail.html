@@ -79,6 +79,15 @@ committees.admin.CommitteeMembershipAdmin.committee_detail_view.
                         {{ row.function }}
                     </span>
                     {% endif %}
+                    {% if row.is_derived %}
+                    {# Says plainly that this place follows from the Board's
+                       age bands rather than from a membership somebody
+                       recorded. Showing the two as identical would be
+                       claiming a decision nobody made. #}
+                    <span class="ml-2 text-xs font-medium text-base-500 dark:text-base-400 border border-base-200 dark:border-base-700 rounded-default px-2 py-0.5 align-middle">
+                        by age
+                    </span>
+                    {% endif %}
                 </div>
                 <div class="text-sm text-base-500 dark:text-base-400">
                     {% if row.mobile_number %}{{ row.mobile_number }}{% endif %}
@@ -93,4 +102,23 @@ committees.admin.CommitteeMembershipAdmin.committee_detail_view.
     {% endif %}
 </div>
 {% endfor %}
+
+{% if age_rule_applies %}
+    <p class="mt-6 text-sm text-base-500 dark:text-base-400 border-t border-base-200 dark:border-base-700 pt-4">
+        {% if derived_count %}
+            {{ derived_count }} of these
+            {{ derived_count|pluralize:"place is,places are" }} here by age, under the
+            Board's rule. {{ derived_count|pluralize:"It is,They are" }} not recorded
+            as {{ derived_count|pluralize:"a membership,memberships" }} and
+            {{ derived_count|pluralize:"changes,change" }} on
+            {{ derived_count|pluralize:"their,their" }} birthday.
+        {% endif %}
+        {% if unplaceable %}
+            {{ unplaceable }}
+            {{ unplaceable|pluralize:"person has,people have" }} no birthdate on file and
+            cannot be placed by age at all.
+        {% endif %}
+    </p>
+{% endif %}
+
 {% endblock %}

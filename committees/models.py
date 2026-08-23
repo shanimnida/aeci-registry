@@ -381,12 +381,18 @@ class CommitteeMembership(TimeStampedModel):
         message names whichever office is clashing rather than hardcoding
         one.
         """
+        # A term whose end date has already arrived does not block its own
+        # successor: handing over is something that happens on a single day,
+        # and active() deliberately counts a membership ending today as
+        # still active for roster purposes (R2). A FUTURE end date still
+        # blocks, which is the bypass R12 closed.
         if self.role not in self.SOLE_OFFICE_ROLES or self._has_ended():
             return
         clash = (
             CommitteeMembership.objects.active()
             .filter(committee=self.committee, role=self.role)
             .exclude(pk=self.pk)
+            .exclude(date_left__lte=timezone.localdate())
             .first()
         )
         if clash:
@@ -417,6 +423,7 @@ class CommitteeMembership(TimeStampedModel):
             CommitteeMembership.objects.active()
             .filter(committee=self.committee, person=self.person)
             .exclude(pk=self.pk)
+            .exclude(date_left__lte=timezone.localdate())
             .first()
         )
         if clash:
