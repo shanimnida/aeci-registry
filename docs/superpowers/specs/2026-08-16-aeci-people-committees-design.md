@@ -422,7 +422,7 @@ no login in Phase A.
 | Set status → `MEMBER` | ✅ | ✅ \* | ✅ | — |
 | Manage households & children | ✅ | ✅ | — | — |
 | Edit committee rosters | ✅ | ✅ | ✅ | own only |
-| Appoint officers / chairpersons | ✅ | — | ✅ | — |
+| Appoint officers / chairpersons | ✅ | oversight only \*\* | ✅ | — |
 | Upload form scans | ✅ | ✅ | — | — |
 | View own committee roster | ✅ | ✅ | oversight only | ✅ |
 | Create user accounts | ✅ | — | — | — |
@@ -431,6 +431,12 @@ no login in Phase A.
 
 \* The Secretariat *records* an acceptance, supplying `approved_by`; it does not
 originate one. The required approver field is how D8 is enforced in code.
+
+\*\* Amended 2026-08-24, confirmed by the church: the Secretariat may appoint
+**Board Oversight** — and only that. The Board decides who oversees a committee;
+the Secretariat records that decision, the same recording role it plays for
+membership acceptances above. It still cannot appoint a chairperson, co-chair
+or committee secretary, which stay with ICT and the Board.
 
 **There is no Treasurer group.** One existed, holding no permissions, reserved for
 the finance subsystem. It was removed on 2026-08-24 at the church's decision: the

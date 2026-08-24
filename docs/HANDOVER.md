@@ -1389,3 +1389,13 @@ intentional?" It is. Spec 4's matrix grants Create/edit Person to ICT and the Se
 and adding a person means typing the address and birthdate D12 exists to withhold from a
 chairperson. Left exactly as specified; changing it is the church's call to make against the spec,
 not a default to drift into.
+
+Clarification to R93, 2026-08-24: asked directly ("wait, does the secratary originally have
+appointing rights?"), the church confirmed "secretary" meant the SECRETARIAT STAFF, not the Board
+Secretary position. So the oversight-only grant to the Secretariat group stands as built, and is
+now a DELIBERATE amendment to spec 4's matrix rather than an interpretation of mine — the matrix
+cell reads "oversight only" with a footnote dated today. The reasoning that makes it coherent with
+D8's separation of duties: the Board decides who oversees a committee, the Secretariat records
+that decision — the same recording role it already plays for membership acceptances, where it
+supplies approved_by without originating the acceptance. The spec never granted this before; the
+original matrix cell was empty.
