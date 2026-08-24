@@ -34,6 +34,14 @@ BOARD_APPOINTABLE_ROLES = (
     CommitteeRole.OVERSIGHT,
 )
 
+# Board Oversight is the Board's own seat on a committee, and the church
+# named who may fill it (2026-08-24): "board oversight can only be
+# appointed by the board, secretary, or superadmin/ICT". The Secretariat is
+# on that list and on no other part of this screen -- it records the
+# Board's decision without acquiring the power to appoint chairpersons,
+# which spec 4 keeps with ICT and the Board.
+SECRETARIAT_APPOINTABLE_ROLES = (CommitteeRole.OVERSIGHT,)
+
 # What a chairperson may appoint on a committee they lead. Not CHAIRPERSON:
 # a chairperson naming their own successor is the one appointment that is
 # not theirs to make.
@@ -53,7 +61,7 @@ def may_appoint(user) -> bool:
     if user.is_superuser:
         return True
     names = _group_names(user)
-    if names & {groups.ICT, groups.BOARD}:
+    if names & {groups.ICT, groups.BOARD, groups.SECRETARIAT}:
         return True
     return bool(committees_led_by(user))
 
@@ -82,7 +90,9 @@ def appointable_committees(user):
     Committee.has_officers). Its members are recorded on the ordinary
     committee-membership screen, which is what they are -- members.
     """
-    if user.is_superuser or _group_names(user) & {groups.ICT, groups.BOARD}:
+    if user.is_superuser or _group_names(user) & {
+        groups.ICT, groups.BOARD, groups.SECRETARIAT
+    }:
         return Committee.objects.filter(is_active=True, has_officers=True).order_by("name")
     return committees_led_by(user).filter(has_officers=True)
 
@@ -90,6 +100,8 @@ def appointable_committees(user):
 def appointable_roles(user):
     if user.is_superuser or _group_names(user) & {groups.ICT, groups.BOARD}:
         return BOARD_APPOINTABLE_ROLES
+    if groups.SECRETARIAT in _group_names(user):
+        return SECRETARIAT_APPOINTABLE_ROLES
     return CHAIRPERSON_APPOINTABLE_ROLES
 
 
@@ -104,7 +116,9 @@ def appointable_people(user, committee):
     from the roster they can already see, so no field is disclosed that D12
     withholds, and there is no person-picker reaching past their scoping.
     """
-    if user.is_superuser or _group_names(user) & {groups.ICT, groups.BOARD}:
+    if user.is_superuser or _group_names(user) & {
+        groups.ICT, groups.BOARD, groups.SECRETARIAT
+    }:
         return Person.objects.all().order_by("last_name", "first_name")
     return Person.objects.filter(
         pk__in=CommitteeMembership.objects.active()

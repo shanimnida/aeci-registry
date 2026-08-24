@@ -84,9 +84,9 @@ exactly how the history page leaked (R18).
                         <li class="flex justify-between gap-4 py-2 border-b border-base-200 dark:border-base-700">
                             <span>
                                 {% if member.is_this_person %}
-                                    <span class="text-base-500 dark:text-base-400">{{ member.person.full_name }}</span>
+                                    <span class="text-base-500 dark:text-base-400">{{ member.name }}</span>
                                 {% else %}
-                                    <a href="{{ member.url }}" class="underline">{{ member.person.full_name }}</a>
+                                    <a href="{{ member.url }}" class="underline">{{ member.name }}</a>
                                 {% endif %}
                             </span>
                             <span class="text-base-500 dark:text-base-400 whitespace-nowrap">{{ member.role }}</span>

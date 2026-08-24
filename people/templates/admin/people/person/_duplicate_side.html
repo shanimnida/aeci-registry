@@ -1,3 +1,4 @@
+{% load naming %}
 {% comment %}
 One record of a duplicate pair. Rendered twice per pair, from
 duplicates.html, with `person`, `score`, `other` and `attach` set.
@@ -9,7 +10,7 @@ URL would be enough.
 <div class="p-4">
     <div class="flex items-baseline justify-between gap-3 mb-1">
         <a href="{% url 'admin:people_person_view' person.pk %}" class="font-semibold underline">
-            {{ person.full_name }}
+            {% person_name person %}
         </a>
         <span class="text-xs text-base-400 dark:text-base-500 whitespace-nowrap">#{{ person.pk }}</span>
     </div>

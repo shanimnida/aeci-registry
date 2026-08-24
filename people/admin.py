@@ -24,6 +24,14 @@ from people.celebrations import (
     period_bounds,
 )
 from core.numbering import member_no_is_valid, new_member_no
+from people.naming import (
+    DEFAULT,
+    LABELS,
+    SESSION_KEY,
+    display_name,
+    name_order,
+    other_order,
+)
 from people.duplicates import (
     find_duplicate_household_pairs,
     find_duplicate_pairs,
@@ -294,11 +302,21 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
             )
             .values_list("committee_id", flat=True)
         )
-        roster = (
+        roster = set(
             CommitteeMembership.objects.active()
             .filter(committee_id__in=chaired)
             .values_list("person_id", flat=True)
         )
+        # Age-derived members count too (2026-08-24). The Board decided that
+        # children, juniors and youths belong to the Children's Ministry and
+        # the Youth committee by age rather than by a recorded membership --
+        # so they are on the chairperson's roster, and the roster screen now
+        # shows them. Without this they would be names a chairperson can see
+        # listed and gets a 404 on, which is worse than either extreme.
+        from committees.derived import derived_places
+
+        for committee in Committee.objects.filter(pk__in=chaired):
+            roster.update(place.person.pk for place in derived_places(committee))
         return queryset.filter(pk__in=roster)
 
     def get_fields(self, request, obj=None):
@@ -331,8 +349,22 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
         return format_html(
             '<a href="{}" class="font-medium">{}</a>',
             reverse("admin:people_person_view", args=[obj.pk]),
-            obj.full_name,
+            display_name(obj, self._name_order),
         )
+
+    def changelist_view(self, request, extra_context=None):
+        # Stashed so name_link, which Django calls per row without a
+        # request, can read it.
+        self._name_order = name_order(request)
+        extra_context = {
+            **(extra_context or {}),
+            "name_order_label": LABELS[self._name_order],
+            "other_name_order_label": LABELS[other_order(self._name_order)],
+            "name_order_url": reverse("admin:people_person_name_order"),
+        }
+        return super().changelist_view(request, extra_context)
+
+    _name_order = DEFAULT
 
     def get_list_display(self, request):
         if is_chairperson_only(request.user):
@@ -399,8 +431,26 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
                 self.admin_site.admin_view(self.duplicates_view),
                 name="people_person_duplicates",
             ),
+            path(
+                "name-order/",
+                self.admin_site.admin_view(self.name_order_view),
+                name="people_person_name_order",
+            ),
         ]
         return custom + super().get_urls()
+
+    def name_order_view(self, request):
+        """Flip how names are written in lists, for this user.
+
+        Session-backed, so it follows them across every screen that shows a
+        list without a migration or a per-user settings model. Redirects
+        back where they came from, because the control is on the page they
+        were reading and landing somewhere else to answer a display
+        question would be its own annoyance.
+        """
+        request.session[SESSION_KEY] = other_order(name_order(request))
+        back = request.META.get("HTTP_REFERER")
+        return redirect(back or "admin:people_person_changelist")
 
     # -- duplicates ----------------------------------------------------
 
@@ -550,10 +600,10 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
             "changelist_url": reverse("admin:people_person_changelist"),
         }
         if not chairperson_only:
-            context.update(self._person_detail_context(person))
+            context.update(self._person_detail_context(person, name_order(request)))
         return render(request, "admin/people/person/person_view.html", context)
 
-    def _person_detail_context(self, person):
+    def _person_detail_context(self, person, order=DEFAULT):
         """Everything on the page a chairperson does not get (D12).
 
         Kept out of `person_view` so the chairperson branch is a single
@@ -576,6 +626,7 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
                     "members": [
                         {
                             "person": other.person,
+                            "name": display_name(other.person, order),
                             "role": other.get_role_display(),
                             "url": reverse(
                                 "admin:people_person_view", args=[other.person_id]
@@ -796,9 +847,11 @@ class HouseholdAdmin(ModelAdmin):
         if not self.has_view_permission(request, household):
             raise PermissionDenied
 
+        order = name_order(request)
         members = [
             {
                 "person": member.person,
+                "name": display_name(member.person, order),
                 "role": member.get_role_display(),
                 "url": reverse("admin:people_person_view", args=[member.person_id]),
             }

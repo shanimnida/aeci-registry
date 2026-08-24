@@ -1,3 +1,4 @@
+{% load naming %}
 {% comment %}
 One household of a duplicate pair. Rendered twice per pair from
 duplicates.html with `household` and `other` set.
@@ -24,7 +25,7 @@ the two sides look interchangeable when they are not.
     <ul class="text-sm mb-3">
         {% for member in household.members.all %}
             <li class="flex justify-between gap-3 py-1 border-b border-base-200 dark:border-base-700">
-                <span>{{ member.person.full_name }}</span>
+                <span>{% person_name member.person %}</span>
                 <span class="text-base-500 dark:text-base-400 whitespace-nowrap">{{ member.get_role_display }}</span>
             </li>
         {% empty %}

@@ -23,6 +23,8 @@ from committees.appointing import (
 )
 from committees.derived import bands_for_committee, derived_places, unplaceable_count
 from core.groups import is_chairperson_only
+from people.naming import DEFAULT as NAME_DEFAULT
+from people.naming import name_order, short_display_name
 from people.admin import CHAIRPERSON_FIELDS
 from records.models import AccessLog
 
@@ -64,7 +66,7 @@ ROSTER_GAP_TEXT = {
 }
 
 
-def overview_display_name(person):
+def overview_display_name(person, order=NAME_DEFAULT):
     """First + last name only, plus a nickname -- deliberately never the
     fuller `Person.full_name` (which also folds in middle name and suffix).
 
@@ -76,13 +78,10 @@ def overview_display_name(person):
     person's full name remains visible, as before, on their own record in
     the People admin for whoever holds that permission.
     """
-    name = f"{person.first_name} {person.last_name}".strip()
-    if person.nickname:
-        name = f'{name} "{person.nickname}"'
-    return name
+    return short_display_name(person, order)
 
 
-def overview_committee_card(committee, memberships, derived=()):
+def overview_committee_card(committee, memberships, derived=(), order=NAME_DEFAULT):
     """One committee's at-a-glance summary for the overview grid.
 
     `memberships` is already scoped to active rows a caller may see (see
@@ -109,10 +108,10 @@ def overview_committee_card(committee, memberships, derived=()):
         "missing_chair": officer_gaps and chair is None,
         "missing_secretary": officer_gaps and secretary is None,
         "missing_oversight": officer_gaps and not oversight,
-        "chair_name": overview_display_name(chair.person) if chair else "",
-        "secretary_name": overview_display_name(secretary.person) if secretary else "",
-        "co_chair_names": [overview_display_name(m.person) for m in co_chairs],
-        "oversight_names": [overview_display_name(m.person) for m in oversight],
+        "chair_name": overview_display_name(chair.person, order) if chair else "",
+        "secretary_name": overview_display_name(secretary.person, order) if secretary else "",
+        "co_chair_names": [overview_display_name(m.person, order) for m in co_chairs],
+        "oversight_names": [overview_display_name(m.person, order) for m in oversight],
     }
 
 
@@ -139,7 +138,7 @@ def ex_officio_reason(membership) -> str:
     return ", ".join(f"{post.committee.name} Secretary" for post in posts)
 
 
-def overview_roster_row(membership):
+def overview_roster_row(membership, order=NAME_DEFAULT):
     """One roster line, from either a real membership or a derived place.
 
     Both carry `person` and a function name; only a real membership has a
@@ -155,7 +154,7 @@ def overview_roster_row(membership):
         if not function:
             function = ex_officio_reason(membership)
     return {
-        "name": overview_display_name(person),
+        "name": overview_display_name(person, order),
         "function": function,
         "mobile_number": person.mobile_number,
         "email": person.email,
@@ -164,7 +163,7 @@ def overview_roster_row(membership):
     }
 
 
-def overview_roster_sections(memberships, derived=()):
+def overview_roster_sections(memberships, derived=(), order=NAME_DEFAULT):
     """Group a committee's memberships into role sections, in display order,
     each carrying its own gap message when it applies.
 
@@ -177,9 +176,9 @@ def overview_roster_sections(memberships, derived=()):
     sections = []
     for label, role in ROSTER_ROLE_ORDER:
         rows = [m for m in memberships if m.role == role]
-        entries = [overview_roster_row(m) for m in rows]
+        entries = [overview_roster_row(m, order) for m in rows]
         if role == CommitteeRole.MEMBER:
-            entries += [overview_roster_row(place) for place in derived]
+            entries += [overview_roster_row(place, order) for place in derived]
         sections.append({
             "label": label,
             "rows": entries,
@@ -356,6 +355,7 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
         if not self.has_view_permission(request):
             raise PermissionDenied
         chairperson_only = is_chairperson_only(request.user)
+        order = name_order(request)
 
         memberships = (
             self.get_queryset(request)
@@ -378,17 +378,17 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
         cards = []
         for committee in committees:
             rows = by_committee.get(committee.pk, [])
-            # A chairperson's own view is already narrowed to their roster;
-            # adding an age-derived list would show them people they were
-            # never given. The count they see stays what get_queryset allows.
-            derived = (
-                []
-                if chairperson_only
-                else derived_places(
-                    committee, exclude_person_ids={row.person_id for row in rows}
-                )
+            # Corrected 2026-08-24. This used to exclude age-derived places
+            # for a chairperson, reasoning that an age roster would hand
+            # them the congregation. It does not: it hands them exactly the
+            # people the Board decided are on their committee, which is what
+            # D12 grants them. The result was that a superuser saw thirty-odd
+            # Youth members and the Youth chairperson saw twelve -- the one
+            # person who most needs that list seeing least of it.
+            derived = derived_places(
+                committee, exclude_person_ids={row.person_id for row in rows}
             )
-            cards.append(overview_committee_card(committee, rows, derived))
+            cards.append(overview_committee_card(committee, rows, derived, order))
 
         AccessLog.record(
             user=request.user, report="committee overview", ip=request.META.get("REMOTE_ADDR"),
@@ -422,12 +422,8 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
             # refuse outright rather than render a roster of nothing.
             raise PermissionDenied
 
-        derived = (
-            []
-            if is_chairperson_only(request.user)
-            else derived_places(
-                committee, exclude_person_ids={m.person_id for m in memberships}
-            )
+        derived = derived_places(
+            committee, exclude_person_ids={m.person_id for m in memberships}
         )
 
         AccessLog.record(
@@ -443,7 +439,7 @@ class CommitteeMembershipAdmin(SimpleHistoryAdmin, ModelAdmin):
             "committee": committee,
             "count": len(memberships) + len(derived),
             "functions": list(committee.functions.all()),
-            "sections": overview_roster_sections(memberships, derived),
+            "sections": overview_roster_sections(memberships, derived, name_order(request)),
             "derived_count": len(derived),
             "age_rule_applies": bool(bands_for_committee(committee.code)),
             "unplaceable": unplaceable_count() if bands_for_committee(committee.code) else 0,

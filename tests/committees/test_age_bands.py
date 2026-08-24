@@ -261,9 +261,13 @@ def test_the_overview_counts_derived_places(client):
 
 
 @pytest.mark.django_db
-def test_a_chairperson_sees_only_their_recorded_roster_not_the_age_rule(client):
-    """A chairperson's view is scoped to people they were actually given.
-    Adding an age-derived list would hand them the congregation."""
+def test_a_chairperson_sees_the_age_derived_members_of_their_own_committee(client):
+    """Corrected 2026-08-24. This used to assert the opposite, on the
+    reasoning that an age roster would hand a chairperson the congregation.
+    It does not -- it hands them exactly the people the Board decided are on
+    their committee, which is what D12 grants. The symptom was a superuser
+    seeing thirty-odd Youth members while the Youth chairperson saw twelve.
+    """
     user = make_user("chair", groups.CHAIRPERSON)
     chair_person = Person.objects.create(last_name="Chair", first_name="Yut", user=user)
     CommitteeMembership.objects.create(
@@ -282,4 +286,44 @@ def test_a_chairperson_sees_only_their_recorded_roster_not_the_age_rule(client):
         )
     ).content.decode()
 
-    assert "Ligaya" not in body
+    assert "Ligaya" in body
+
+
+@pytest.mark.django_db
+def test_an_age_derived_member_is_reachable_by_their_own_chairperson(client):
+    """Otherwise the roster lists names that 404 when clicked, which is
+    worse than either extreme."""
+    user = make_user("chair", groups.CHAIRPERSON)
+    chair_person = Person.objects.create(last_name="Chair", first_name="Yut", user=user)
+    CommitteeMembership.objects.create(
+        committee=committee("youth"),
+        person=chair_person,
+        role=CommitteeRole.CHAIRPERSON,
+        date_joined=TODAY - dt.timedelta(days=30),
+    )
+    ligaya = person_aged(14, "Ligaya")
+    client.force_login(user)
+
+    response = client.get(reverse("admin:people_person_view", args=[ligaya.pk]))
+
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_a_chairperson_still_cannot_reach_somebody_off_every_roster(client):
+    """The widening is to their OWN committee's age band, not to everybody
+    who happens to have a birthday."""
+    user = make_user("chair", groups.CHAIRPERSON)
+    chair_person = Person.objects.create(last_name="Chair", first_name="Foo", user=user)
+    CommitteeMembership.objects.create(
+        committee=committee("food"),  # Food has no age rule
+        person=chair_person,
+        role=CommitteeRole.CHAIRPERSON,
+        date_joined=TODAY - dt.timedelta(days=30),
+    )
+    ligaya = person_aged(14, "Ligaya")
+    client.force_login(user)
+
+    response = client.get(reverse("admin:people_person_view", args=[ligaya.pk]))
+
+    assert response.status_code == 404

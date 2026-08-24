@@ -61,7 +61,11 @@ def test_the_overview_shows_all_twelve_committees_for_secretariat_with_matching_
 
     sunshine_card = next(c for c in cards if c["committee"].pk == sunshine.pk)
     assert sunshine_card["count"] == 2
-    assert sunshine_card["chair_name"] == "Shan Malong"
+    # Surname first is the standard in every list of people as of
+    # 2026-08-24 (people/naming.py) -- a register is looked up by
+    # surname. "First name first" is a per-user option, tested in
+    # tests/people/test_name_order.py.
+    assert sunshine_card["chair_name"] == "Malong, Shan"
     assert sunshine_card["missing_chair"] is False
 
 
@@ -190,7 +194,7 @@ def test_a_chairperson_can_open_their_own_committees_detail(client, chair_setup)
     client.force_login(user)
     response = client.get(detail_url(ict))
     assert response.status_code == 200
-    assert "Shan Malong" in response.content.decode()
+    assert "Malong, Shan" in response.content.decode()
 
 
 @pytest.mark.django_db
@@ -256,9 +260,9 @@ def test_drilling_into_a_committee_shows_its_roster_grouped_with_sub_functions(c
     body = response.content.decode()
 
     assert response.status_code == 200
-    assert "Shan Malong" in body
-    assert "Manex Reyes" in body
-    assert "Ana Cruz" in body
+    assert "Malong, Shan" in body
+    assert "Reyes, Manex" in body
+    assert "Cruz, Ana" in body
     assert "Transport" in body
     assert "Chairperson" in body
     assert "Co-Chair" in body
@@ -278,7 +282,7 @@ def test_drilling_into_a_committee_shows_oversight_when_assigned(client):
     response = client.get(detail_url(events))
     body = response.content.decode()
 
-    assert "Rico Dela Cruz" in body
+    assert "Dela Cruz, Rico" in body
     assert "Board Oversight" in body
     assert "No Board Oversight assigned" not in body
 

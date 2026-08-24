@@ -48,7 +48,7 @@ precisely what D12 withholds.
                 {% for member in members %}
                     <li class="flex justify-between gap-4 py-3 border-b border-base-200 dark:border-base-700">
                         <span>
-                            <a href="{{ member.url }}" class="underline font-medium">{{ member.person.full_name }}</a>
+                            <a href="{{ member.url }}" class="underline font-medium">{{ member.name }}</a>
                             {% if member.person.nickname %}
                                 <span class="text-base-400 dark:text-base-500">&ldquo;{{ member.person.nickname }}&rdquo;</span>
                             {% endif %}

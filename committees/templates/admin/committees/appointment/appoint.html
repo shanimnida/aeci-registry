@@ -1,5 +1,5 @@
 {% extends "admin/base_site.html" %}
-{% load i18n %}
+{% load i18n naming %}
 
 {% comment %}
 Committee appointments, one committee per block: who holds each office now,
@@ -47,7 +47,7 @@ this page exist for them at all — see committees/appointing.py.
                         <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-base-200 dark:border-base-700">
                             <span class="text-sm">
                                 <span class="text-base-500 dark:text-base-400">{{ entry.membership.get_role_display }}</span>
-                                <strong class="ml-2">{{ entry.membership.person.full_name }}</strong>
+                                <strong class="ml-2">{% person_name entry.membership.person %}</strong>
                                 <span class="text-base-500 dark:text-base-400 ml-2">on this committee since {{ entry.membership.date_joined|date:"j M Y" }}</span>
                             </span>
                             {% if entry.can_end %}
@@ -99,7 +99,7 @@ this page exist for them at all — see committees/appointing.py.
                                 class="block w-full h-9 border border-base-300 dark:border-base-600 rounded px-2 bg-white dark:bg-base-900 text-sm">
                             <option value="">Choose a person…</option>
                             {% for person in block.candidates %}
-                                <option value="{{ person.pk }}">{{ person.full_name }}{% if person.nickname %} "{{ person.nickname }}"{% endif %}{% if person.member_no %} · {{ person.member_no }}{% endif %}</option>
+                                <option value="{{ person.pk }}">{% person_name person %}{% if person.nickname %} "{{ person.nickname }}"{% endif %}{% if person.member_no %} · {{ person.member_no }}{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>

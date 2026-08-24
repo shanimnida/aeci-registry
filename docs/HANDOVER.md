@@ -1350,3 +1350,42 @@ Ruling: R90 — the Secretariat roster names the office that put each ex-officio
   are secretary of another one, and a bare name does not say so. Somebody holding two secretary
   posts has both named; an ordinary member who volunteered reads as an ordinary member, because
   they did not arrive by way of an office.
+
+=== SURNAME FIRST, AGE-BAND SCOPING CORRECTED, OVERSIGHT APPOINTERS (714 tests) ===
+
+Ruling: R91 — every LIST of people writes the surname first ("Santos, Rhea Marie"), with first name
+  first as a per-user option. Requested 2026-08-24. Surname first is the standard because a
+  register is looked up by surname: it is what the church's own book of members is ordered by
+  (spec 7.6) and how the changelist has always been SORTED. The distinction that holds it together:
+  lists only. Person.full_name is untouched, because a notice like "Linked to existing child
+  Rhyzel Bayatin Abaigar" is a sentence and a sentence reads in the spoken order. sorted_name on
+  the model, people/naming.py for the choice, a {% person_name %} template tag so templates do not
+  each need the request threaded through, and one toggle on the People list that follows the user
+  to every other list via the session — a way of reading, not a setting on one screen, and no
+  migration. The toggle names the order it will SWITCH TO, because a button labelled with the
+  current state reads as a statement.
+
+Ruling: R92 — REVERSES part of R62 on the church's report. Age-derived members are now shown to
+  their own chairperson, and the row-scoping lets that chairperson open their five-field records.
+  R62 excluded them, reasoning an age roster would "hand them the congregation" — but it hands
+  them exactly the people the Board decided are on their committee, which is what D12 grants.
+  The symptom that exposed it: a superuser saw thirty-odd Youth members while the Youth
+  chairperson — the one person who most needs that list — saw twelve. The widening is to their own
+  committee's age band only: a Food chairperson still cannot reach a 14-year-old, and there is a
+  test for exactly that. Without the scoping half, the roster would list names that 404 when
+  clicked, which is worse than either extreme.
+
+Ruling: R93 — Board Oversight may be appointed by the Board, the Secretariat, and ICT, per the
+  church's instruction ("board oversight can only be appointed by the board, secretary, or
+  superadmin/ICT" — reading "secretary" as the Secretariat, the recording role, not as twelve
+  committee secretaries, which would make every committee secretary an appointer of Board seats).
+  The Secretariat gets OVERSIGHT and nothing else on that screen: it records the Board's decision
+  without acquiring the power to appoint chairpersons, which spec 4 keeps with ICT and the Board.
+  The role check is in the view, not just the select — a POST of a role not offered is refused.
+  Chairpersons are unchanged: co-chair and secretary on their own committee, never oversight.
+
+Also asked, answered no, and worth recording: "committee chairs cannot add persons, is that
+intentional?" It is. Spec 4's matrix grants Create/edit Person to ICT and the Secretariat only,
+and adding a person means typing the address and birthdate D12 exists to withhold from a
+chairperson. Left exactly as specified; changing it is the church's call to make against the spec,
+not a default to drift into.

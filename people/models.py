@@ -177,8 +177,30 @@ class Person(TimeStampedModel):
 
     @property
     def full_name(self) -> str:
+        """The name as it is spoken: "Rhea Marie Santos Jr."
+
+        Used wherever a name appears inside a sentence -- a notice, a
+        greeting, a confirmation message -- because that is how a sentence
+        reads.
+        """
         parts = [self.first_name, self.middle_name, self.last_name, self.suffix]
         return " ".join(part for part in parts if part)
+
+    @property
+    def sorted_name(self) -> str:
+        """The name as it is filed: "Santos, Rhea Marie Jr."
+
+        The standard for every LIST of people (see people/naming.py). A
+        register is looked up by surname -- that is what the church's own
+        book of members is ordered by (spec 7.6) -- and a column of given
+        names is a column you have to read every row of to find anybody.
+        """
+        given = " ".join(
+            part for part in (self.first_name, self.middle_name, self.suffix) if part
+        )
+        if not self.last_name:
+            return given
+        return f"{self.last_name}, {given}" if given else self.last_name
 
     @property
     def missing_fields(self) -> list[str]:

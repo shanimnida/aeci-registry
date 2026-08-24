@@ -108,12 +108,50 @@ def test_a_chairperson_of_nothing_is_refused(client):
 
 
 @pytest.mark.django_db
-def test_the_secretariat_is_refused(client):
-    """Spec 4: appointing officers is ICT and the Board. The Secretariat
-    records members; it does not appoint officers."""
+def test_the_secretariat_may_appoint_board_oversight_and_nothing_else(client):
+    """From the church 2026-08-24: "board oversight can only be appointed by
+    the board, secretary, or superadmin/ICT". The Secretariat is on that
+    list and on no other part of this screen -- it records the Board's
+    decision without acquiring the power to appoint chairpersons, which
+    spec 4 keeps with ICT and the Board."""
     client.force_login(make_user("sec", groups.SECRETARIAT))
 
-    assert client.get(appoint_url()).status_code == 403
+    body = client.get(appoint_url()).content.decode()
+
+    assert 'value="OVERSIGHT"' in body
+    assert 'value="CHAIRPERSON"' not in body
+    assert 'value="CO_CHAIR"' not in body
+    assert 'value="SECRETARY"' not in body
+
+
+@pytest.mark.django_db
+def test_the_secretariat_cannot_post_a_role_it_is_not_offered(client, youth_member):
+    """The select is not the gate -- the view checks the role itself."""
+    client.force_login(make_user("sec", groups.SECRETARIAT))
+
+    response = client.post(
+        appoint_url(),
+        {
+            "committee": Committee.objects.get(code="youth").pk,
+            "person": youth_member.pk,
+            "role": CommitteeRole.CHAIRPERSON,
+        },
+        follow=True,
+    )
+
+    assert "not yours to appoint" in response.content.decode()
+    assert not CommitteeMembership.objects.filter(
+        person=youth_member, role=CommitteeRole.CHAIRPERSON
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_a_chairperson_is_still_never_offered_board_oversight(client, youth_chair):
+    client.force_login(youth_chair)
+
+    body = client.get(appoint_url()).content.decode()
+
+    assert 'value="OVERSIGHT"' not in body
 
 
 @pytest.mark.django_db
