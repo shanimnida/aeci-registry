@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.contrib.auth.models import Group, User
 from django.urls import reverse
 
-from committees.models import Committee, CommitteeMembership, CommitteeRole
+from committees.models import Appointment, Committee, CommitteeMembership, CommitteeRole, Position
 from core import groups
 from people.celebrations import SUNSHINE_COMMITTEE_CODE
 from people.models import Household, HouseholdMember, HouseholdRole, Person
@@ -82,6 +82,47 @@ def test_the_sunshine_chairperson_can_open_it(client):
     client.force_login(make_chairperson("sun", SUNSHINE_COMMITTEE_CODE))
 
     assert client.get(celebrations_url()).status_code == 200
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "start_offset,end_offset,allowed",
+    [(-30, None, True), (0, 0, True), (-30, -1, False), (1, None, False)],
+)
+def test_pastor_access_follows_active_appointment(client, start_offset, end_offset, allowed):
+    user = make_user("pastor", groups.BOARD)
+    person = Person.objects.create(last_name="Santos", first_name="Pastor", user=user)
+    Appointment.objects.create(
+        person=person,
+        position=Position.objects.get(code="pastor"),
+        start_date=TODAY + dt.timedelta(days=start_offset),
+        end_date=None if end_offset is None else TODAY + dt.timedelta(days=end_offset),
+    )
+    birthday_in(0, first_name="BirthdayPerson")
+    client.force_login(user)
+
+    response = client.get(celebrations_url())
+    assert response.status_code == (200 if allowed else 403)
+    dashboard = client.get(reverse("admin:index")).content.decode()
+    assert ("BirthdayPerson" in dashboard) is allowed
+    if allowed:
+        body = response.content.decode()
+        assert "BirthdayPerson" in body
+        assert "1990" not in body
+
+
+@pytest.mark.django_db
+def test_pastor_appointment_does_not_grant_access_to_an_unlinked_login(client):
+    user = make_user("unlinked", groups.BOARD)
+    person = Person.objects.create(last_name="Santos", first_name="Pastor")
+    Appointment.objects.create(
+        person=person,
+        position=Position.objects.get(code="pastor"),
+        start_date=TODAY - dt.timedelta(days=30),
+    )
+    client.force_login(user)
+
+    assert client.get(celebrations_url()).status_code == 403
 
 
 @pytest.mark.django_db

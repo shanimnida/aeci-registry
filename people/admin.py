@@ -656,10 +656,10 @@ class PersonAdmin(SimpleHistoryAdmin, ModelAdmin):
 
         The Church Secretary's original reason for asking for AEGIS. Access
         is `may_view_celebrations`, not this admin's own view permission:
-        spec 7.7 grants this one report to the Sunshine chairperson (whose
-        committee does greetings and benevolence) and withholds it from the
-        Board and Treasurer, neither of which the ordinary Person
-        permissions express. The list itself carries no field a chairperson
+        Sunshine's chairperson/co-chair and active pastors can open this
+        report alongside ICT and Secretariat. Board membership or the
+        Treasurer position alone grants no access, which ordinary Person
+        permissions cannot express. The list itself carries no field a chairperson
         may not see -- a name a person goes by, and a month and day.
 
         The AccessLog entry is written after the gate, never before, so a

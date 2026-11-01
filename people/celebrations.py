@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from django.utils import timezone
 
-from committees.models import CommitteeMembership, CommitteeRole
+from committees.models import Appointment, CommitteeMembership, CommitteeRole
 from core import groups
 from people.models import Household, HouseholdRole, MembershipStatus, Person
 
@@ -307,13 +307,13 @@ def missing_birthdate_count() -> int:
 
 
 def may_view_celebrations(user) -> bool:
-    """Spec 7.7: Secretariat, ICT, and the Sunshine chairperson.
+    """Secretariat, ICT, active pastors, and the Sunshine chairperson/co-chair.
 
     Deliberately wider than D12 for that one chairperson: Sunshine's lead
     sees names and dates for the whole congregation, not just their own
     roster, because greetings are the committee's actual job. Every other
-    chairperson is refused. The Board and Treasurer are not on the spec's
-    list for this report and are refused too.
+    chairperson is refused. Board membership or the Treasurer position alone
+    does not grant access. Pastors use their active church appointment.
     """
     if not user.is_authenticated:
         return False
@@ -321,6 +321,10 @@ def may_view_celebrations(user) -> bool:
         return True
     names = set(user.groups.values_list("name", flat=True))
     if names & {groups.ICT, groups.SECRETARIAT}:
+        return True
+    if Appointment.objects.active().filter(
+        person__user=user, position__code="pastor"
+    ).exists():
         return True
     return (
         CommitteeMembership.objects.active()
