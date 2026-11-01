@@ -2,6 +2,7 @@ from django.apps import apps
 from django.contrib import admin
 from django.contrib.admin.sites import AdminSite
 from django.urls import path
+from django.views.generic import RedirectView
 
 # django-unfold's AppConfig.ready() (see INSTALLED_APPS in settings.py)
 # already replaced admin.site with its own AdminSite subclass by the time
@@ -65,4 +66,7 @@ def _ordered_get_app_list(self, request, app_label=None):
 
 admin.site.get_app_list = _ordered_get_app_list.__get__(admin.site, admin.site.__class__)
 
-urlpatterns = [path("admin/", admin.site.urls)]
+urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="admin:index"), name="home"),
+    path("admin/", admin.site.urls),
+]
