@@ -43,6 +43,7 @@ def test_ip_lockout_applies_across_usernames_and_ignores_spoofed_headers(client)
         login(client, username=f"missing{n}", HTTP_X_FORWARDED_FOR=f"198.51.100.{n}")
     response = login(client, username="another", HTTP_X_FORWARDED_FOR="203.0.113.8")
     assert LOCKED_MESSAGE in response.content.decode()
+    assert not LoginAttempt.objects.filter(key=_key("account", "another")).exists()
 
 
 def test_blocked_attempt_does_not_extend_cooldown_and_expiry_allows_login(client, officer):

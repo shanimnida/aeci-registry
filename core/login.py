@@ -32,9 +32,14 @@ class LoginRateLimitMixin:
         except ValueError:
             address = "unknown"
         account_key = _key("account", username)
+        ip_key = _key("ip", address)
         keys = [(account_key, settings.LOGIN_ACCOUNT_FAILURE_LIMIT),
-                (_key("ip", address), settings.LOGIN_IP_FAILURE_LIMIT)]
+                (ip_key, settings.LOGIN_IP_FAILURE_LIMIT)]
         now = timezone.now()
+        # Do not let a blocked peer fill the table with fresh usernames.
+        # The locked transaction below still rechecks the authoritative state.
+        if LoginAttempt.objects.filter(key=ip_key, locked_until__gt=now).exists():
+            raise ValidationError(LOCKED_MESSAGE, code="rate_limited")
         window = timedelta(minutes=15)
         error = None
         cleaned = None
