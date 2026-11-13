@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import os
 import re
 import shutil
@@ -9,6 +10,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.files import File
 from django.core.files.storage import storages
+from django.core.files.storage import FileSystemStorage
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -137,8 +139,19 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--output-dir", default="backups")
+        parser.add_argument("--require-remote", action="store_true",
+                            help="Fail before dumping unless remote backup storage is configured.")
+        parser.add_argument("--verify-upload", action="store_true",
+                            help="Download the uploaded backup and compare its SHA-256 checksum.")
 
     def handle(self, *args, **options):
+        uploads = getattr(settings, "BACKUP_TO_STORAGE", False)
+        if options["require_remote"] and (
+            not uploads or isinstance(storages["default"], FileSystemStorage)
+        ):
+            raise CommandError("Remote backup storage is required; configure USE_S3_STORAGE and BACKUP_TO_STORAGE.")
+        if options["verify_upload"] and not uploads:
+            raise CommandError("Upload verification requires BACKUP_TO_STORAGE=True.")
         output_dir = Path(options["output_dir"])
         output_dir.mkdir(parents=True, exist_ok=True)
         _restrict_permissions(output_dir)
@@ -215,6 +228,16 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f"Uploaded to storage key {storage_key}")
             )
+            if options["verify_upload"]:
+                with gz_target.open("rb") as local:
+                    expected = hashlib.file_digest(local, "sha256").digest()
+                actual = hashlib.sha256()
+                with storages["default"].open(storage_key, "rb") as remote:
+                    for chunk in remote.chunks():
+                        actual.update(chunk)
+                if actual.digest() != expected:
+                    raise CommandError("Uploaded backup checksum mismatch; previous backups were not pruned.")
+                self.stdout.write(self.style.SUCCESS("Uploaded backup SHA-256 verified."))
 
         retention_days = getattr(settings, "BACKUP_RETENTION_DAYS", 30)
         removed_local = prune_local_backups(output_dir, retention_days)

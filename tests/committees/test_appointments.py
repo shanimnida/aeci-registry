@@ -17,6 +17,22 @@ def test_positions_are_seeded():
     assert Position.objects.count() == 5
     assert Position.objects.get(code="treasurer").is_unique_holder is True
     assert Position.objects.get(code="board-member").is_unique_holder is False
+    assert Position.objects.get(code="pastor").is_unique_holder is False
+
+
+@pytest.mark.django_db
+def test_multiple_pastors_can_hold_overlapping_active_appointments():
+    pastor = Position.objects.get(code="pastor")
+    for name in ("Jemuel", "Second"):
+        person = Person.objects.create(first_name=name, last_name="Pastor")
+        appointment = Appointment(
+            person=person, position=pastor, start_date=dt.date(2026, 1, 1)
+        )
+        appointment.full_clean()
+        appointment.save()
+    assert Appointment.objects.active(on=dt.date(2026, 11, 13)).filter(
+        position=pastor
+    ).count() == 2
 
 
 @pytest.mark.django_db

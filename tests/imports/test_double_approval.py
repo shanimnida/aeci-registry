@@ -71,7 +71,7 @@ def _post_data(row):
     return post
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_two_overlapping_approvals_of_the_same_row_create_only_one_person(monkeypatch):
     """The red/green test for CRITICAL 2. Two threads, two independent DB
     connections, two Client instances -- both forced past the initial row

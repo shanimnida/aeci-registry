@@ -1,0 +1,84 @@
+name: Nightly backup and restore check
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 02:00 Asia/Manila the following day
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      restore-postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: aegis_restore_check
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["55433:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Management commands need a settings key, but never production sessions.
+      SECRET_KEY: maintenance-only-settings-key-with-no-production-session-access-123456789
+      DEBUG: "False"
+      USE_S3_STORAGE: "True"
+      BACKUP_TO_STORAGE: "True"
+      AWS_STORAGE_BUCKET_NAME: ${{ secrets.AWS_STORAGE_BUCKET_NAME }}
+      AWS_S3_ENDPOINT_URL: ${{ secrets.AWS_S3_ENDPOINT_URL }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      PG_DUMP_PATH: /usr/lib/postgresql/18/bin/pg_dump
+      PSQL_PATH: /usr/lib/postgresql/18/bin/psql
+      RESTORE_CHECK_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:55433/aegis_restore_check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required secrets
+        shell: bash
+        run: |
+          for name in DATABASE_URL AWS_STORAGE_BUCKET_NAME AWS_S3_ENDPOINT_URL AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Actions secret: $name"
+              exit 1
+            fi
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Install matching PostgreSQL tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates gnupg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/postgresql.gpg
+          echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+      - name: Back up to remote storage and verify uploaded bytes
+        run: python manage.py backup_database --require-remote --verify-upload
+      - name: Restore backup into a fresh local database
+        shell: bash
+        run: |
+          shopt -s nullglob
+          backups=(backups/aeci-*.sql.gz)
+          [[ ${#backups[@]} -eq 1 ]]
+          python scripts/verify_backup_restore.py "${backups[0]}"
+      - name: Verify stored scans are readable
+        run: python manage.py verify_scan_storage
+      - name: Apply contact retention policy
+        run: python manage.py purge_stale_contacts
+      - name: Remove expired login counters
+        run: python manage.py prune_login_attempts

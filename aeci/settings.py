@@ -346,10 +346,8 @@ DATABASES = {"default": env.db("DATABASE_URL")}
 # being a password written on a sticky note, which is worse than anything
 # these validators prevent.
 #
-# Length is the one kept, because it is the one that matters. Django ships
-# no rate limiting on the login page, so the only thing standing between a
-# guessed password and an account is how many guesses it takes; the other
-# three shape a password rather than lengthen it. Eight characters is
+# Length is the one kept. The admin login also has database-backed
+# throttling (core/login.py). Eight characters is
 # Django's own default and is not an onerous ask.
 #
 # If AEGIS ever issues logins to members (it does not today — D4), revisit
@@ -361,6 +359,11 @@ AUTH_PASSWORD_VALIDATORS = [
         "OPTIONS": {"min_length": 8},
     },
 ]
+
+# Failed login attempts are shared through PostgreSQL, including across
+# workers and restarts. A successful login resets only the account bucket.
+LOGIN_ACCOUNT_FAILURE_LIMIT = env.int("LOGIN_ACCOUNT_FAILURE_LIMIT", default=5)
+LOGIN_IP_FAILURE_LIMIT = env.int("LOGIN_IP_FAILURE_LIMIT", default=50)
 
 LANGUAGE_CODE = "en-ph"
 TIME_ZONE = "Asia/Manila"

@@ -2,7 +2,7 @@
 
 **AEGIS** — the Avdei Elohim Growth Information System — is the church's
 member registry. This is the walkthrough for putting it online: code in the
-GitHub repo **`aeci-registry`**, database in the Neon project **`aeci`**,
+GitHub repo **`aeci-registry`**, database in the Neon project **`aegis`**,
 application running as the Render service **`aeci-registry`**, scanned forms
 in Cloudflare R2. Those are the three services' actual names — use them
 consistently; "the app," "the database," "the site" all mean the same thing
@@ -88,7 +88,7 @@ whole sections. Everything here is explained fully further down.
 ## 1. Before you start
 
 The stack is: **Render** (service `aeci-registry`) runs the application,
-**Neon** (project `aeci`) hosts the PostgreSQL database, **Cloudflare R2**
+**Neon** (project `aegis`) hosts the PostgreSQL database, **Cloudflare R2**
 stores scanned form images. All three have free tiers, chosen deliberately
 so the church can run this at no cost for as long as that keeps working, and
 move any one of them to a paid plan later without rewriting anything
@@ -104,7 +104,7 @@ You will need accounts on:
 
 - **GitHub** (to hold the `aeci-registry` repository)
 - **Render** (to run the `aeci-registry` service)
-- **Neon** (for the `aeci` database project)
+- **Neon** (for the `aegis` database project)
 - **Cloudflare** (for R2 — needed by Section 9, but worth creating now)
 
 Create every one of these under an email address **the church controls**,
@@ -147,7 +147,7 @@ either.
 
 ## 3. Neon — the database
 
-1. Sign up at Neon, create a new **project** named **`aeci`**. Pick a region
+1. Sign up at Neon, create a new **project** named **`aegis`**. Pick a region
    close to where the site will mostly be used (a Singapore or other nearby
    Asia-Pacific region, if offered, will feel faster than a US one — this is
    a latency preference, not a correctness requirement).
@@ -495,155 +495,86 @@ document; it would need a small addition to `aeci/settings.py` (a second
 storage backend) to actually use it, which is a code change outside this
 document's scope.
 
-## 10. Scheduling the two jobs
+## 10. Nightly backups, restore verification, and retention
 
-Nothing runs `backup_database` or `purge_stale_contacts` automatically yet.
-The `Procfile`'s `release:` line and Render's own "Pre-Deploy Command"
-feature both only run around a deploy — neither is a scheduler, and (as
-covered in Section 4) neither is even available on Render's free instance
-type in the first place. **Render's free tier has no cron feature** — Render
-does have a Cron Jobs product, but it's a separate, paid offering.
+The repository includes `.github/workflows/scheduled-jobs.yml`. It runs
+daily at 18:00 UTC (02:00 Asia/Manila the following day) and supports manual
+runs from **Actions → Nightly backup and restore check → Run workflow**.
+Scheduled workflows use the repository's default branch, currently
+`build/core-registry`. Keep this workflow on that branch.
 
-### Option A — a scheduled GitHub Actions workflow (recommended)
+Before enabling it, add these repository **Actions secrets** through GitHub's
+Settings → Secrets and variables → Actions:
 
-1. Add a file at `.github/workflows/scheduled-jobs.yml` (this document
-   doesn't create it for you — add it yourself, reviewing it before you
-   commit, same as anything else that touches production credentials):
+- `DATABASE_URL`: the production database in Neon project **aegis**, not the
+  older **aeci** project. Use its direct connection for `pg_dump`.
+- `AWS_STORAGE_BUCKET_NAME`
+- `AWS_S3_ENDPOINT_URL`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
 
-   ```yaml
-   name: Nightly backup and retention purge
+The storage settings must point to the same private, persistent bucket used
+by the hosted scans. No production Django `SECRET_KEY` is needed by this
+workflow. Missing secrets cause an explicit failed run.
 
-   on:
-     schedule:
-       - cron: "0 18 * * *"   # 18:00 UTC = 02:00 Asia/Manila the next day
-     workflow_dispatch: {}     # adds a manual "Run workflow" button too
+Each run installs PostgreSQL 18 client tools (the production server major
+version last verified), creates a compressed database backup, requires
+remote storage, and downloads the uploaded object to check its SHA-256.
+It then restores the backup with `ON_ERROR_STOP` into a fresh local
+PostgreSQL service on the runner and checks the core tables. The restore
+script refuses non-local, incorrectly named, or nonempty databases.
+It never restores into the source database. No member register is uploaded
+as a GitHub artifact, and SQL contents are suppressed in logs.
 
-   jobs:
-     maintenance:
-       runs-on: ubuntu-latest
-       steps:
-         - uses: actions/checkout@v4
+The job also reads each referenced scan from remote storage, runs the
+existing contact-retention command, and removes expired login counters.
+A failed backup, checksum, restore, or scan check stops subsequent steps.
+Existing backup retention keeps the newest backup even if it is stale.
 
-         - uses: actions/setup-python@v5
-           with:
-             python-version: "3.12.3"
+After adding secrets, run the workflow manually and inspect its results.
+Only a successful run establishes that the hosted backup and restore path
+works. Merely committing this workflow does not establish a backup.
+GitHub Actions notifications should be enabled for workflow failures.
+GitHub may disable scheduled workflows in public repositories after 60
+days without activity; periodically check that the schedule remains active.
+Backups contain the register and need the same access controls as scans.
 
-         # Ubuntu's own apt archive ships a pg_dump that is normally OLDER
-         # than Neon's server (Ubuntu 24.04's default is PostgreSQL 16;
-         # Neon defaults new projects to a newer major version). pg_dump
-         # refuses outright to dump from a server with a newer major version
-         # than itself — it does not degrade gracefully, it exits non-zero
-         # and produces nothing. Installing from the official PostgreSQL
-         # (PGDG) apt repository instead gets a client that actually matches.
-         #
-         # Before relying on the version number below, confirm what Neon is
-         # actually running: the Neon console → your project → Connection
-         # Details (or Settings) states it, or run
-         # `psql "$DATABASE_URL" -c "SELECT version();"` from anywhere with
-         # the connection string. Update postgresql-client-18 below to match
-         # if Neon's version ever differs from this — the PGDG repository
-         # carries every current and recent major version side by side.
-         - name: Install a PostgreSQL client at least as new as Neon
-           run: |
-             sudo apt-get update
-             sudo apt-get install -y curl ca-certificates gnupg
-             curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-               | sudo gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
-             echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-               | sudo tee /etc/apt/sources.list.d/pgdg.list
-             sudo apt-get update
-             sudo apt-get install -y postgresql-client-18
-             pip install -r requirements.txt
+To run a backup manually with production settings already supplied in the
+environment, use:
 
-         - name: Nightly backup
-           env:
-             DATABASE_URL: ${{ secrets.DATABASE_URL }}
-             SECRET_KEY: ${{ secrets.SECRET_KEY }}
-             USE_S3_STORAGE: "True"
-             BACKUP_TO_STORAGE: "True"
-             AWS_STORAGE_BUCKET_NAME: ${{ secrets.AWS_STORAGE_BUCKET_NAME }}
-             AWS_S3_ENDPOINT_URL: ${{ secrets.AWS_S3_ENDPOINT_URL }}
-             AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-             AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-           run: python manage.py backup_database
+```shell
+python manage.py backup_database --require-remote --verify-upload
+python manage.py verify_scan_storage
+```
 
-         - name: Retention purge
-           env:
-             DATABASE_URL: ${{ secrets.DATABASE_URL }}
-             SECRET_KEY: ${{ secrets.SECRET_KEY }}
-           run: python manage.py purge_stale_contacts
-   ```
+See `docs/RESTORE.md` for recovery and the isolated restore-check script.
 
-2. Add the secrets it references under the repository's **Settings →
-   Secrets and variables → Actions**: `DATABASE_URL` and `SECRET_KEY` (the
-   same values Render uses — `SECRET_KEY` is required because Django loads
-   the full settings module for any `manage.py` command, even ones that
-   don't render a page) and the four `AWS_*` values from Section 9.
-3. **Alerting is not set up above, and there is nothing else in this project
-   that sends one.** The command itself never fails silently — see Section
-   11's "known gaps" note and `docs/RESTORE.md` — but a loud failure that
-   nobody is watching for is functionally the same as a silent one. The
-   honest, minimum-effort options, cheapest first:
-   - Check the repository's **Actions** tab by hand, weekly. Costs nothing,
-     depends entirely on remembering.
-   - Add a free "dead man's switch" ping: sign up for a free tier of a
-     service like healthchecks.io or cronitor.io, and add one more step at
-     the end of the `maintenance` job — `run: curl -fsS
-     https://hc-ping.com/<your-check-id>` — with the schedule configured on
-     that service to expect a ping roughly once a day. If the workflow
-     doesn't run (or fails before reaching this step), the service emails
-     you. This is not implemented above; it's the realistic next step if
-     silence-as-failure ever actually bites.
+### Tests before deployment
 
-**Cost**: free. GitHub gives every private repository on the free plan 2,000
-Actions minutes a month; two short jobs (a minute or two each) running
-nightly use a small fraction of that.
+`.github/workflows/tests.yml` runs the full suite on PostgreSQL 18, checks
+for missing migrations, collects static files, and runs Django's production
+configuration checks. The isolated test settings use a fast password hasher;
+never use `aeci.test_settings` on the hosted web service.
 
-**Trade-off**: someone has to set it up once — the workflow file plus a
-handful of repository secrets — and GitHub **automatically disables**
-scheduled workflows after 60 days with no commits to the repository (this
-applies to private repos too, despite GitHub's wording sometimes suggesting
-otherwise; only an actual push resets the clock, not issues or comments).
-For a project that might go quiet for months once it's working, that's a
-real risk worth planning around — check the repository's **Actions** tab
-occasionally, and know that any small commit (even a documentation fix)
-resets the 60-day clock.
+Protect `build/core-registry` with the required status check
+**PostgreSQL tests**, and merge changes after that check succeeds. Render
+can additionally use **After CI Checks Pass** in the service's Auto-Deploy
+setting. Confirm that setting in the Render dashboard when changing the
+deployment policy.
 
-### Option B — run both commands by hand
+### Login protection
 
-To run either command against production from your own computer, set these
-as one-off environment variables for that terminal session only (see
-`docs/RESTORE.md`'s section on passwords and shell history for why not to
-type them where they'll be saved to disk):
+Login attempts use shared PostgreSQL counters. Five unsuccessful attempts
+against an account, or fifty against one socket IP within fifteen minutes,
+cause a fifteen-minute cooldown. Existing signed-in sessions keep working.
+The form reports when a cooldown applies, including for nonexistent logins.
+Successful logins reset the account counter and retain the IP budget.
+The counters store HMAC digests rather than submitted usernames or IPs.
 
-- `DATABASE_URL` — required for both commands.
-- For `backup_database` specifically, also set the four `AWS_*` variables
-  **and** `USE_S3_STORAGE=True` **and** `BACKUP_TO_STORAGE=True`. This last
-  pair is easy to forget and the failure is silent: `BACKUP_TO_STORAGE`
-  defaults to whatever `USE_S3_STORAGE` is set to (`aeci/settings.py`), and
-  if you leave both unset — even with all four `AWS_*` values sitting right
-  there in your shell — the command runs successfully, prints "Wrote
-  ...sql.gz," and writes the dump to a local `backups/` folder on the
-  machine you're sitting at, nowhere else. It looks exactly like a
-  successful off-site backup. It is not one. If that machine is a laptop
-  that gets wiped, or a throwaway cloud shell, or a GitHub Codespace that
-  gets deleted, that "backup" goes with it.
-
-Then run `python manage.py backup_database` or `python manage.py
-purge_stale_contacts` directly.
-
-**Cost**: no setup at all. **Trade-off**: entirely dependent on a person
-remembering. A backup routine nobody actually runs on schedule isn't a
-backup routine.
-
-### Which to pick
-
-For a church this size, with one part-time ICT volunteer: **Option A.** The
-one-time setup cost is small, and it removes "did anyone remember" from the
-list of things that can go wrong with the only copy of the church's
-membership register. Keep Option B as the documented fallback, and it's how
-the restore drill in `docs/RESTORE.md` is meant to be run anyway — a restore
-is not something to automate.
+`LOGIN_ACCOUNT_FAILURE_LIMIT` and `LOGIN_IP_FAILURE_LIMIT` can override the
+thresholds. Client-supplied forwarded headers are ignored. A proxy or shared
+network can share the IP budget, so account-level limits provide the main
+protection. Expired counters are removed by the nightly job.
 
 ## 11. Verifying the deployment worked
 
@@ -652,7 +583,7 @@ is not something to automate.
 - [ ] The ICT superuser account (Section 7) logs in and sees a sidebar with
       **Registry**, **Committees**, **Records**, and **Administration**
       sections.
-- [ ] **Administration → Groups** lists exactly five: ICT, Secretariat,
+- [ ] **Administration → Groups** lists exactly four: ICT, Secretariat,
       Board, Chairperson.
 - [ ] **Committees → Committee** lists 12 committees — these come from an
       earlier migration and exist independently of `officers.csv`.
@@ -668,8 +599,8 @@ is not something to automate.
       visit while Render wakes the free instance back up. This is expected,
       not a fault — if someone's demonstrating the system on a Sunday
       morning, warn them the first click of the day will be slow.
-- [ ] **Known gap, not a failure of this checklist**: there is no automatic
-      alert if the nightly backup stops running. See Section 10, step 3.
+- [ ] **Backup monitoring**: enable GitHub Actions failure notifications and
+      check periodically that the nightly schedule remains active (Section 10).
 
 ## 12. Moving to paid hosting later
 
