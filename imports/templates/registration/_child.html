@@ -1,0 +1,4 @@
+<div class="child-row">
+    <div class="child-row-heading"><strong>Child <span data-child-number>{{ number }}</span></strong><button type="button" class="text-button" data-remove-child hidden>Remove</button></div>
+    <div class="field-grid">{% include 'registration/_field.html' with field=child.full_name %}{% include 'registration/_field.html' with field=child.date_of_birth %}</div>
+</div>

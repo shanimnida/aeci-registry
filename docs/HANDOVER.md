@@ -1431,3 +1431,28 @@ incorrectly named, and nonempty destinations. The production Neon project is
 
 The member-picker regression test now checks only its queryset. Transactional
 concurrency tests restore migration-seeded fixtures so they are order-independent.
+
+
+=== NATIVE MEMBER REGISTRATION (2026-11-13) ===
+
+/register/ is the public mobile-friendly profiling form; the root still
+opens the staff login. Public submissions become one pending ImportBatch /
+StagedPerson each, with a unique website_submission_id for double-click and
+replay protection. Only staff review creates a Person. The existing Google
+import remains available.
+
+Members can check their supplied name and birth date against existing people
+and pending submissions. Exact identity matches are notified and blocked;
+name-only/incomplete matches require clarification through the Secretariat.
+Different known birth dates allow namesakes to register. No stored contact,
+family, birthday, member number or person ID is returned by the check. A second
+server-side check runs under a surname lock so concurrent same-person forms
+cannot both stage. Corrections to existing members remain a staff operation.
+
+The public consent is v3-web-2026-11. It identifies the church by name only,
+as no official address/contact has been supplied, and directs questions to
+the Secretariat in person. Notice text, consent statements and timestamp are
+retained in raw_data. Review preserves the version and the member's message.
+Facebook greetings remain a separate unchecked opt-in. Public POSTs have CSRF,
+a signed session-bound expiring token, a 64 KiB body limit, a honeypot, and
+shared per-IP/per-session limits. No member accounts are created by this form.

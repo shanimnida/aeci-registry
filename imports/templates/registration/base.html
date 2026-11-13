@@ -1,0 +1,26 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="referrer" content="same-origin">
+    <title>{% block title %}Member registration{% endblock %} · AEGIS</title>
+    <link rel="icon" href="{% static 'aegis/favicon.png' %}">
+    <link rel="stylesheet" href="{% static 'aegis/registration.css' %}">
+    {% block scripts %}{% endblock %}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to registration</a>
+<header class="site-header">
+    <a class="brand" href="{% url 'member_registration' %}">
+        <img src="{% static 'aegis/church-seal.png' %}" width="46" height="46" alt="Avdei Elohim Church seal">
+        <span><strong>AEGIS</strong><small>Avdei Elohim Church Inc.</small></span>
+    </a>
+    <a class="staff-link" href="{% url 'admin:index' %}">Staff sign in <span aria-hidden="true">↗</span></a>
+</header>
+<main id="main" class="page-shell">{% block content %}{% endblock %}</main>
+<footer class="site-footer"><span>Avdei Elohim Church Inc.</span><span>Questions or corrections? Speak to the Secretariat in person.</span></footer>
+</body>
+</html>

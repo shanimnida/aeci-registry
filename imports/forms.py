@@ -56,6 +56,14 @@ class UploadForm(forms.Form):
 # reviewer even gets to see and judge it, and would duplicate the model's
 # own validation with a second, possibly different, error message.
 class StagedPersonForm(forms.Form):
+    def __init__(self, *args, website_registration=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if website_registration:
+            self.fields["notes"] = forms.CharField(
+                required=False, max_length=2000, label="Member's message to the Secretariat",
+                widget=UnfoldAdminTextareaWidget(attrs={"rows": 3}),
+            )
+
     member_no = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     last_name = forms.CharField(widget=UnfoldAdminTextInputWidget)
     first_name = forms.CharField(widget=UnfoldAdminTextInputWidget)
@@ -157,6 +165,7 @@ def initial_from_data(data: dict) -> dict:
     initial = {field: data.get(field) for field in StagedPersonForm.base_fields if field != "membership_status"}
     initial["membership_status"] = data.get("membership_status") or MembershipStatus.MEMBER
     initial["committees"] = data.get("committees") or []
+    initial["notes"] = data.get("notes") or ""
     for text_field in ("member_no", "middle_name", "suffix", "place_of_birth", "nationality",
                         "home_address", "mobile_number", "email", "spouse_name", "nickname",
                         "emergency_contact_name",

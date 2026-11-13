@@ -575,10 +575,12 @@ class ImportBatchAdmin(ModelAdmin):
                 return self._advance(batch, row, queue_ctx)
 
             if action == "approve":
-                form = StagedPersonForm(request.POST)
+                form = StagedPersonForm(request.POST, website_registration=bool(batch.website_submission_id))
                 formset = ChildFormSet(request.POST, prefix="children")
                 if form.is_valid() and formset.is_valid():
                     cleaned = dict(form.cleaned_data)
+                    if batch.website_submission_id:
+                        cleaned["_consent_version"] = row.raw_data.get("_registration", {}).get("consent_version", "v3")
                     children = [c for c in formset.cleaned_data if c.get("full_name")]
                     approved_person = None
                     notices: list[str] = []
@@ -648,7 +650,7 @@ class ImportBatchAdmin(ModelAdmin):
 
         if form is None:
             data = row.effective_data
-            form = StagedPersonForm(initial=initial_from_data(data))
+            form = StagedPersonForm(initial=initial_from_data(data), website_registration=bool(batch.website_submission_id))
             formset = ChildFormSet(initial=children_initial(data), prefix="children")
 
         # MINOR 8 (2026-08-16 import fixes): this used to only fire *after*

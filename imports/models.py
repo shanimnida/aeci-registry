@@ -5,7 +5,7 @@ from django.db import models
 
 
 class ImportBatch(models.Model):
-    """One uploaded JSON file from the AI transcription workflow.
+    """One uploaded file or one member-submitted website registration.
 
     The AI never writes to the register (docs/IMPORT_TEMPLATE.md) — this
     model and StagedPerson below are the holding area between "the AI
@@ -14,6 +14,10 @@ class ImportBatch(models.Model):
     """
 
     source_filename = models.CharField(max_length=255, blank=True)
+    website_submission_id = models.UUIDField(
+        null=True, blank=True, unique=True, editable=False,
+        help_text="Idempotency key for a member's website registration.",
+    )
     content_hash = models.CharField(
         max_length=64,
         blank=True,
@@ -70,7 +74,7 @@ def status_counts(queryset) -> dict:
 
 
 class StagedPerson(models.Model):
-    """One entry from the uploaded JSON array, not yet — or never — a Person.
+    """One uploaded or member-submitted entry, not yet — or never — a Person.
 
     `raw_data` is exactly what the AI produced for this entry and is never
     modified. `edited_data` holds the reviewer's corrections once they save

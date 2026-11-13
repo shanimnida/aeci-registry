@@ -21,13 +21,13 @@
                 {{ row }}
             </div>
             <div class="text-sm text-base-500 dark:text-base-400 mt-1">
-                Source <span class="font-medium text-base-700 dark:text-base-300">{{ effective_data.source_image|default:"—" }}</span>
+                Source <span class="font-medium text-base-700 dark:text-base-300">{% if batch.website_submission_id %}Website registration{% else %}{{ effective_data.source_image|default:"—" }}{% endif %}</span>
                 <span class="mx-1.5 text-base-300 dark:text-base-700">&middot;</span>
                 Form {{ effective_data.form_version|default:"—" }}
                 <span class="mx-1.5 text-base-300 dark:text-base-700">&middot;</span>
                 <span class="inline-flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full {% if confidence == "high" %}bg-green-600{% elif confidence == "medium" %}bg-amber-500{% else %}bg-red-600{% endif %}" aria-hidden="true"></span>
-                    AI confidence: {{ confidence|default:"—"|capfirst }}
+                    {% if batch.website_submission_id %}Submitted by a member{% else %}AI confidence: {{ confidence|default:"—"|capfirst }}{% endif %}
                 </span>
             </div>
         </div>
@@ -273,6 +273,14 @@ throughout -- the congregation includes older volunteers.
             {% include "admin/imports/importbatch/_field.html" with field=form.form_version uncertain=uncertain_by_field.form_version %}
         </div>
     </div>
+
+    {% if batch.website_submission_id %}
+        <div class="mb-8">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Member's message</h2>
+            {% include "admin/imports/importbatch/_field.html" with field=form.notes %}
+            <p class="text-xs text-base-500 dark:text-base-400">The original submission retains the privacy notice and consent timestamp. Website reference: {{ batch.website_submission_id }}</p>
+        </div>
+    {% endif %}
 
     {% if other_flags %}
         <div class="mb-8 text-xs text-base-500 dark:text-base-400 flex items-start gap-1.5">

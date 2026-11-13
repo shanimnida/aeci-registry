@@ -1,4 +1,52 @@
-# The online profiling form, and the consent that goes with it
+# Member registration and privacy consent
+
+
+## Website registration (current)
+
+Share **https://aeci-registry.onrender.com/register/**. Members can use this
+page without a staff login. The AEGIS login page and staff review queue also
+link to it. It collects the same profiling information as the Google Form,
+with up to ten child entries and up to two active, self-selectable committee
+preferences. First name, last name and privacy consent are required. Other
+fields are optional unless a name match needs a birth date to distinguish
+an existing record.
+
+**Check my record** checks the supplied name and birth date against the
+register and pending registrations. Matching names with missing birth dates
+are flagged for clarification; people with different known birth dates can
+register separately. It returns a short notice without revealing stored
+contact details, birth dates, member numbers or family information. It does
+not edit an existing record. Members should ask the Secretariat for updates.
+The same check runs on the server before every final submission, including
+without JavaScript. Submissions sharing a surname are serialized for the
+final check, and each signed form has a unique idempotency key to prevent
+repeated clicks from staging extra copies.
+
+New submissions go directly to **Review queue**, labelled **Website
+registration**. The Secretariat reviews the information and makes the
+membership decision through the existing approval screen. The member's
+message is editable there and is retained in the approved record. Submitting
+never creates a staff login, assigns a member number or makes an appointment.
+
+The website uses consent version **v3-web-2026-11**, derived from the v3
+notice below. It identifies the church by name and directs privacy questions
+to the Secretariat in person because the church has not supplied an official
+address or contact details. It also clarifies the restricted birthday report.
+The exact notice, consent statement, optional Facebook statement and server
+submission timestamp are preserved with the original staged data. Approval
+records that website consent version on the Person. Facebook consent is a
+separate unchecked opt-in.
+
+Forms use CSRF protection, a signed browser-bound token valid for eight hours,
+a 64 KiB request limit, a honeypot and shared database rate limits. Defaults
+are 300 attempts per socket IP and 20 per browser session in an hour; adjust
+`REGISTRATION_IP_LIMIT` and `REGISTRATION_SESSION_LIMIT` for church events or
+shared connections. Forwarded IP headers are not trusted. No private member
+information is placed on the public confirmation page, and form responses
+are not cached. Expired tokens can be refreshed while retaining typed values.
+
+
+## Earlier Google and printed forms
 
 Two things live here:
 
@@ -35,20 +83,11 @@ document is built to hold the right things, not to certify that it is sufficient
 
 ---
 
-## What still has to change in AEGIS
+## What AEGIS already stores
 
-The form can ask the Facebook question today. **AEGIS cannot store the answer.** These are the
-gaps, in the order they bite:
-
-| Gap | What it is | Needed by |
-| --- | --- | --- |
-| No field for the Facebook answer | `Person` has `greeting_opt_out`, which is the *internal* greeting list and the wrong shape — it is opt-OUT and defaults to "yes, greet me". Public posting has to be a separate opt-IN field defaulting to no, exactly as spec §11 argued. Reusing `greeting_opt_out` would silently treat "happy to be greeted in the hall" as "happy to be on the internet". | Before the first Facebook post |
-| `CONSENT_FORM_VERSION` still says `v2 (August 2026)` | `aeci/settings.py` line 304. Becomes `v3 (August 2026)` when v3 is adopted. | When v3 is adopted |
-| Import template has no Facebook column | `docs/IMPORT_TEMPLATE.md`'s header row needs one more column, and `imports/spreadsheet.py` needs to read it. | Before importing v3 responses |
-| Import template has no `Nickname` column | Pre-existing gap, unrelated to this change but visible here: the paper form v2 collects a nickname, the import spreadsheet never carried one, and Celebrations greets people by nickname. Every imported person currently has a blank one. | Worth fixing in the same pass |
-
-None of that is built. Say the word and it is a small, contained piece of work — one field, one
-migration, one column, and the tests for each.
+AEGIS stores nickname, the separate public-greeting opt-in and consent version.
+Google Forms exports are imported directly; website registrations arrive in
+the same review queue without an export/upload step.
 
 ---
 
@@ -64,24 +103,14 @@ migration, one column, and the tests for each.
 5. **Fill in the church's registered address** where the consent says `[FILL IN: ...]`.
 6. **Responses → Link to Sheets** to create the response spreadsheet.
 
-### Getting responses into AEGIS
+### Getting Google responses into AEGIS
 
-The response sheet's columns are the question titles, which were chosen to match
-`docs/IMPORT_TEMPLATE.md`'s header row wherever possible — so the sheet is close to import-ready,
-but not identical. Three things need doing by hand before upload:
-
-- **Dates come out as `8/23/2026`, not `2026-08-23`.** Select those columns in Sheets and set
-  Format → Number → Custom date and time → `YYYY-MM-DD`.
-- **Committees arrive as one comma-joined cell** (`Sunshine, Youth`), but the import template wants
-  one column per committee with an `X`. Split them by hand, or ask the Secretariat to do it in the
-  review screen instead — the reviewer sees and can correct every field before approval anyway.
-- **Add the columns the sheet has no source for**: `Source Image` (blank — there is no photograph
-  of an online submission), `Form Version` (`v3`), and `Confidence` (`high` — a member typed this
-  themselves, so there is no handwriting to misread).
-
-The alternative, and honestly the simpler one for a first run: don't import the sheet at all. Open
-each response beside the AEGIS encoding screen and type it in. Twenty-two forms is an afternoon,
-and the import pipeline was built for *photographs of handwriting*, which this is not.
+Google Forms can remain available during the transition. Download its running
+response sheet as `.xlsx` or `.csv` and upload it through **Profiling form
+import**. AEGIS recognizes the question headers, normalizes dates, splits
+committee selections and skips response timestamps already staged. No manual
+column conversion is needed. Google responses and website submissions are
+reviewed through the same queue.
 
 ### What the online form deliberately does not ask
 

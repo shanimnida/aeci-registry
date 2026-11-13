@@ -1,0 +1,65 @@
+{% extends 'registration/base.html' %}
+{% load static %}
+{% block scripts %}<script src="{% static 'aegis/registration.js' %}" defer></script>{% endblock %}
+{% block content %}
+<div class="intro"><span class="eyebrow">Church member profile</span><h1>Member registration</h1><p>Tell us a little about yourself and your household. Your details will go to the Secretariat for review.</p></div>
+<div class="registration-layout">
+    <aside class="form-guide" aria-label="Registration guide">
+        <div class="guide-top"><span class="guide-icon" aria-hidden="true">✦</span><h2>Before you begin</h2><p>Only your first name, last name and privacy consent are required. You can leave other details blank.</p></div>
+        <nav aria-label="Form sections"><a href="#privacy"><span>01</span> Privacy consent</a><a href="#personal"><span>02</span> About you</a><a href="#contact"><span>03</span> Contact details</a><a href="#family"><span>04</span> Family</a><a href="#emergency"><span>05</span> Emergency contact</a><a href="#committees"><span>06</span> Church life</a></nav>
+        <p class="guide-note">Already registered? Use the record check under “About you”. The Secretariat can help update an existing record.</p>
+    </aside>
+    <form method="post" id="registration-form" class="registration-form" action="{% url 'member_registration' %}">
+        {% csrf_token %}{{ form.submission_token }}
+        <div class="bot-field" aria-hidden="true"><label for="{{ form.contact_website.id_for_label }}">Leave this field blank</label>{{ form.contact_website }}</div>
+        {% if form.errors or children.errors or children.non_form_errors %}
+        <div class="error-summary" role="alert" tabindex="-1" id="form-errors"><h2>Please check your details</h2><ul>
+            {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+            {% for field in form %}{% for error in field.errors %}<li>{% if field.is_hidden %}{{ error }}{% else %}<a href="#{{ field.id_for_label }}">{{ field.label }}: {{ error }}</a>{% endif %}</li>{% endfor %}{% endfor %}
+            {% for error in children.non_form_errors %}<li>{{ error }}</li>{% endfor %}
+            {% for child in children %}{% for field in child %}{% for error in field.errors %}<li><a href="#{{ field.id_for_label }}">Child {{ forloop.parentloop.parentloop.counter }} — {{ field.label }}: {{ error }}</a></li>{% endfor %}{% endfor %}{% endfor %}
+        </ul></div>
+        {% endif %}
+        <section class="form-card privacy-card" id="privacy">
+            <div class="section-heading"><span class="section-number">01</span><div><h2>Your privacy</h2><p>Please read the notice before entering your details.</p></div></div>
+            <details class="privacy-notice"><summary>Read the data privacy notice <span aria-hidden="true">＋</span></summary><div class="notice-copy">{% for heading, text in privacy_notice %}<h3>{{ heading }}</h3><p>{{ text }}</p>{% endfor %}<small>Notice version: {{ consent_version }}</small></div></details>
+            <label class="check-label" for="{{ form.consent_given.id_for_label }}">{{ form.consent_given }}<span>{{ form.consent_given.label }} <span class="required-mark" aria-label="required">*</span></span></label>
+            {% if form.consent_given.errors %}<div class="field-errors" id="{{ form.consent_given.auto_id }}_error">{{ form.consent_given.errors }}</div>{% endif %}
+            <p class="field-help">If you prefer not to consent online, speak to the Secretariat before sharing your details.</p>
+        </section>
+        <section class="form-card" id="personal">
+            <div class="section-heading"><span class="section-number">02</span><div><h2>About you</h2><p>Please write your name as you would like it recorded.</p></div></div>
+            <div class="field-grid">{% include 'registration/_field.html' with field=form.last_name %}{% include 'registration/_field.html' with field=form.first_name %}{% include 'registration/_field.html' with field=form.middle_name %}{% include 'registration/_field.html' with field=form.suffix %}{% include 'registration/_field.html' with field=form.nickname %}{% include 'registration/_field.html' with field=form.date_of_birth %}</div>
+            <div class="record-check"><div><strong>Already registered?</strong><p>Check whether a record or registration already exists for you.</p></div><button type="button" class="button-secondary" id="check-record" hidden>Check my record</button><p id="record-check-result" class="record-result" role="status" aria-live="polite"></p><noscript><p>We will check for an existing record when you submit.</p></noscript></div>
+            <div class="field-grid">{% include 'registration/_field.html' with field=form.place_of_birth %}{% include 'registration/_field.html' with field=form.gender %}{% include 'registration/_field.html' with field=form.civil_status %}{% include 'registration/_field.html' with field=form.nationality %}</div>
+        </section>
+        <section class="form-card" id="contact">
+            <div class="section-heading"><span class="section-number">03</span><div><h2>Contact details</h2><p>How the church can reach you.</p></div><span class="optional-tag">Optional</span></div>
+            {% include 'registration/_field.html' with field=form.home_address %}
+            <div class="field-grid">{% include 'registration/_field.html' with field=form.mobile_number %}{% include 'registration/_field.html' with field=form.email %}</div>
+        </section>
+        <section class="form-card" id="family">
+            <div class="section-heading"><span class="section-number">04</span><div><h2>Family</h2><p>Fill in what applies to your household.</p></div><span class="optional-tag">Optional</span></div>
+            <div class="field-grid">{% include 'registration/_field.html' with field=form.spouse_name %}{% include 'registration/_field.html' with field=form.date_of_marriage %}</div>
+            <div class="children-heading"><h3>Children</h3><p>List children as their parent or guardian. Leave unused rows blank.</p></div>
+            {{ children.management_form }}
+            <div id="children-rows">{% for child in children %}{% include 'registration/_child.html' with child=child number=forloop.counter %}{% endfor %}</div>
+            <template id="child-template">{% include 'registration/_child.html' with child=children.empty_form number='__number__' %}</template>
+            <button type="button" class="button-secondary add-child" id="add-child" hidden><span aria-hidden="true">＋</span> Add another child</button><small id="child-limit" class="field-help" role="status"></small>
+            <noscript><p class="field-help">For additional children, include their details in the notes below or speak to the Secretariat.</p></noscript>
+        </section>
+        <section class="form-card" id="emergency">
+            <div class="section-heading"><span class="section-number">05</span><div><h2>Emergency contact</h2><p>Someone to contact in an emergency at a church activity.</p></div><span class="optional-tag">Optional</span></div>
+            {% include 'registration/_field.html' with field=form.emergency_contact_name %}<div class="field-grid">{% include 'registration/_field.html' with field=form.emergency_relationship %}{% include 'registration/_field.html' with field=form.emergency_number %}</div>
+        </section>
+        <section class="form-card" id="committees">
+            <div class="section-heading"><span class="section-number">06</span><div><h2>Church life</h2><p>Share your interests and how you would like to be greeted.</p></div><span class="optional-tag">Optional</span></div>
+            <fieldset class="committee-fieldset"><legend>{{ form.committees.label }}</legend><p class="field-help">Choose up to two committees. These are your preferences for the Secretariat to review.</p><div class="committee-options">{% for checkbox in form.committees %}<label class="committee-option">{{ checkbox.tag }}<span>{{ checkbox.choice_label }}</span></label>{% empty %}<p class="field-help">You can discuss committee service with the Secretariat.</p>{% endfor %}</div>{% if form.committees.errors %}<div class="field-errors" id="{{ form.committees.auto_id }}_error">{{ form.committees.errors }}</div>{% endif %}<p class="field-help" id="committee-count" role="status"></p></fieldset>
+            <div class="greeting-choice"><h3>Greetings on Facebook</h3><p>{{ greeting_notice }}</p><label class="check-label" for="{{ form.public_greeting_consent.id_for_label }}">{{ form.public_greeting_consent }}<span>{{ form.public_greeting_consent.label }}</span></label></div>
+            {% include 'registration/_field.html' with field=form.notes %}
+        </section>
+        <div class="submit-card"><div><strong>Ready to send your registration?</strong><p>The Secretariat will review it before adding it to the church register.</p></div><button type="submit" class="button-primary" id="submit-registration">Send registration <span aria-hidden="true">→</span></button></div>
+        <p class="submission-note">Your submission creates a registration for review. For corrections afterward, speak to the Secretariat.</p>
+    </form>
+</div>
+{% endblock %}
