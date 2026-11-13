@@ -1399,3 +1399,35 @@ D8's separation of duties: the Board decides who oversees a committee, the Secre
 that decision — the same recording role it already plays for membership acceptances, where it
 supplies approved_by without originating the acceptance. The spec never granted this before; the
 original matrix cell was empty.
+
+
+=== PASTORS AND OPERATIONAL HARDENING (2026-11-13) ===
+
+Pastor is now a multiple-holder position. Migration 0009 updates the existing
+position; historical migrations and existing appointments remain intact.
+Pastor birthday access still follows each active appointment linked to a login.
+Grievance and Reconciliation membership remains a separate church record.
+
+The admin login keeps Unfold's existing form and adds shared PostgreSQL counters:
+five failed attempts per account or fifty per socket IP in fifteen minutes
+trigger a fifteen-minute cooldown. Counters use HMAC keys, ignore untrusted
+forwarding headers, and commit failed attempts before raising validation errors.
+Successful login clears the account counter; the shared IP budget remains.
+Internal counters have no staff permissions or admin registration. The nightly
+job prunes expired counters. Existing signed-in sessions remain usable.
+
+GitHub Actions now runs the full suite on PostgreSQL 18, checks migrations,
+collects static files, and checks production settings. CI also creates a real
+backup with synthetic data and verifies its restore. Test-only settings use a
+fast password hasher; production must keep aeci.settings.
+
+The nightly maintenance workflow requires production database/storage secrets.
+It refuses local-only backups, verifies the uploaded SHA-256, restores into a
+fresh disposable local PostgreSQL service, checks scan readability, and runs
+contact retention and login-counter cleanup. It never prints dump contents or
+uploads the register as a GitHub artifact. The restore script rejects remote,
+incorrectly named, and nonempty destinations. The production Neon project is
+'aegis'; 'aeci' is the older project and must not be used for production backups.
+
+The member-picker regression test now checks only its queryset. Transactional
+concurrency tests restore migration-seeded fixtures so they are order-independent.

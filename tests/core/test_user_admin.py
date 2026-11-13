@@ -273,7 +273,8 @@ def test_somebody_already_claimed_by_another_login_is_not_offered(client, ict, v
     free = Person.objects.create(last_name="Free", first_name="Bea")
     client.force_login(ict)
 
-    body = client.get(change_url(volunteer)).content.decode()
-
-    assert f'value="{free.pk}"' in body
-    assert f'value="{taken.pk}"' not in body
+    response = client.get(change_url(volunteer))
+    assert response.status_code == 200
+    available = response.context["adminform"].form.fields["person"].queryset
+    assert available.filter(pk=free.pk).exists()
+    assert not available.filter(pk=taken.pk).exists()

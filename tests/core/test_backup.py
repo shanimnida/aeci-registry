@@ -284,3 +284,44 @@ def test_prune_storage_backups_keeps_the_newest_even_if_stale(tmp_path):
     assert removed == ["backups/aeci-2025-01-01-0000.sql.gz"]
     assert not storage.exists("backups/aeci-2025-01-01-0000.sql.gz")
     assert storage.exists("backups/aeci-2025-07-01-0000.sql.gz")
+
+
+def test_scheduled_backup_refuses_local_storage_before_dumping(tmp_path, settings):
+    settings.BACKUP_TO_STORAGE = False
+    with pytest.raises(CommandError, match="Remote backup storage is required"):
+        call_command("backup_database", require_remote=True, output_dir=str(tmp_path / "dump"))
+    assert not (tmp_path / "dump").exists()
+
+
+@pytest.mark.django_db
+def test_uploaded_backup_is_downloaded_and_verified(tmp_path, monkeypatch, settings):
+    _patch_pg_dump(monkeypatch, _succeeds())
+    settings.BACKUP_TO_STORAGE = True
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    }
+    call_command("backup_database", output_dir=str(tmp_path), verify_upload=True)
+
+
+@pytest.mark.django_db
+def test_corrupt_upload_fails_before_pruning(tmp_path, monkeypatch, settings):
+    from django.core.files.storage import storages
+    from core.management.commands import backup_database
+
+    _patch_pg_dump(monkeypatch, _succeeds())
+    settings.BACKUP_TO_STORAGE = True
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    }
+    def corrupt_upload(self, target):
+        return storages["default"].save("backups/corrupt.sql.gz", ContentFile(b"corrupt"))
+
+    monkeypatch.setattr(backup_database.Command, "_upload", corrupt_upload)
+    def must_not_prune(*args, **kwargs):
+        pytest.fail("Old backups must not be pruned after a failed verification")
+
+    monkeypatch.setattr(backup_database, "prune_storage_backups", must_not_prune)
+    with pytest.raises(CommandError, match="checksum mismatch"):
+        call_command("backup_database", output_dir=str(tmp_path), verify_upload=True)

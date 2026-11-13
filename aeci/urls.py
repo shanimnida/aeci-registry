@@ -66,6 +66,10 @@ def _ordered_get_app_list(self, request, app_label=None):
 
 admin.site.get_app_list = _ordered_get_app_list.__get__(admin.site, admin.site.__class__)
 
+from core.login import protect_admin_login
+
+protect_admin_login(admin.site)
+
 urlpatterns = [
     path("", RedirectView.as_view(pattern_name="admin:index"), name="home"),
     path("admin/", admin.site.urls),

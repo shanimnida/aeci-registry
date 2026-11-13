@@ -3,6 +3,20 @@ from django.db import models
 from django.db.models import Q
 
 
+class LoginAttempt(models.Model):
+    """Shared login counters. Keys contain HMACs, never usernames or IPs."""
+
+    key = models.CharField(max_length=80, primary_key=True)
+    failures = models.PositiveIntegerField(default=0)
+    window_started_at = models.DateTimeField()
+    locked_until = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        # Internal counters, never editable through a staff role or admin.
+        default_permissions = ()
+
+
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

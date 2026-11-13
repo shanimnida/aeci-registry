@@ -1,7 +1,7 @@
 # Restoring AEGIS from a backup
 
 AEGIS is the Avdei Elohim Growth Information System — deployed as the
-`aeci-registry` service on Render, database `aeci` on Neon. A backup nobody
+`aeci-registry` service on Render, database in Neon project `aegis`. A backup nobody
 has restored from is a rumour. Run this drill once before go-live and once a
 year afterwards. Whoever runs it should be someone other than the person who
 wrote the backup command, if possible.
@@ -26,7 +26,7 @@ install and are not covered by that setting, because they are run by a
 human at a terminal, not by application code.
 
 **Version note**: your local `psql`/`pg_dump` should be at least as new as
-whatever Postgres major version Neon runs for the `aeci` project (visible in
+whatever Postgres major version Neon runs for the `aegis` project (visible in
 Neon's Connection Details / Settings page). The same rule that makes the
 scheduled backup workflow pin a specific client version (see
 `docs/DEPLOYMENT.md`, Section 10) applies here too — an older `pg_dump`
@@ -273,21 +273,14 @@ looks like this:
 
 ## Known gaps (deliberately out of scope here)
 
-- **Scheduling.** Nothing runs `backup_database` automatically yet. Most
-  free-tier hosts have no usable cron; wiring up a schedule belongs in
-  [the deployment runbook](DEPLOYMENT.md), not this command.
-- **Alerting.** Even once the schedule from the deployment runbook is set
-  up, **nothing tells anyone if the nightly backup job stops running or
-  starts failing.** The command itself never fails silently — see "What
-  backup_database guarantees" above — but a GitHub Actions failure that
-  nobody looks at is invisible in practice. This was never implemented,
-  full stop; it is not a "coming soon," it is a real, current gap. The
-  simplest honest mitigation right now is checking the repository's
-  **Actions** tab by hand on some regular cadence (weekly is reasonable for
-  a church this size); the next step up, if that ever proves unreliable, is
-  a free "dead man's switch" ping (healthchecks.io, cronitor.io, or similar)
-  added as one more step in the workflow — see `docs/DEPLOYMENT.md` Section
-  10 for exactly what that would look like. Neither is implemented today.
+- **Scheduling and verification.** The checked-in nightly Actions workflow
+  uploads a backup, verifies its checksum, and tests restoration in an
+  isolated database. It requires the five Actions secrets documented in
+  [the deployment runbook](DEPLOYMENT.md). A successful manual run is
+  required before relying on the schedule.
+- **Monitoring.** Enable GitHub Actions failure notifications and check that
+  the public repository's schedule has not been disabled for inactivity.
+  An independent missed-run monitor remains an optional improvement.
 - **The spec §8.4 admin spreadsheet export** is a separate reporting
   feature, not part of database backup/restore.
 
@@ -300,3 +293,25 @@ production, stop and investigate before trusting the backup.
 | --- | --- | --- | --- |
 | 2026-08-17 | 0 | 12 | Claude Code, on behalf of goodinggoodjao@gmail.com — uncompressed dump; see task-13-report.md |
 | 2026-08-17 | 0 | 12 | Claude Code, on behalf of goodinggoodjao@gmail.com — repeated against a **gzip-compressed** dump after fix round 1; see task-13-report.md |
+
+
+## Automated restore check
+
+The nightly Actions workflow downloads and verifies the uploaded backup's
+checksum, then tests its restore in a fresh local PostgreSQL service. For
+an equivalent manual check, create a fresh, empty local database named
+`aegis_restore_check`, set `RESTORE_CHECK_DATABASE_URL` to its local
+connection string, and run:
+
+```shell
+python scripts/verify_backup_restore.py backups/aeci-YYYY-MM-DD-HHMM.sql.gz
+```
+
+The script accepts only localhost/127.0.0.1 and that exact database name.
+It refuses a nonempty target, restores in one transaction with SQL errors
+treated as failures, and prints only core table counts. Its temporary SQL
+file is removed automatically. `DATABASE_URL` remains the source and is
+never used as the restore destination. Set `PSQL_PATH` if psql is not on PATH.
+The disposable database still contains the register: remove that database
+when a manual drill is finished. The Actions service is destroyed with its
+runner. Do not upload its data or the SQL dump as public artifacts.
