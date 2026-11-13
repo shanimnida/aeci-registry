@@ -1,0 +1,7 @@
+{% extends 'admin/login.html' %}
+{% block login_after %}
+    {{ block.super }}
+    <div class="mt-6 border-t border-base-200 dark:border-base-800 pt-5 text-center text-sm">
+        <a href="{% url 'member_registration' %}" class="text-primary-600 dark:text-primary-400 hover:underline">Register as a church member →</a>
+    </div>
+{% endblock %}

@@ -590,7 +590,7 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
         if version in ("v2", "v3"):
             person.consent_given = True
             person.consent_date = _blank_to_none(cleaned.get("certification_date"))
-            person.consent_version = version
+            person.consent_version = cleaned.get("_consent_version") or version
         # Only ever set from a form that actually asked. v1 and v2 have no
         # Facebook question, so their silence is not agreement -- spec 11's
         # whole point is that this defaults to no until somebody says yes.

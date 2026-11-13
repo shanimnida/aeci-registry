@@ -214,6 +214,12 @@ UNFOLD = {
                             "imports.view_importbatch"
                         ),
                     },
+                    {
+                        "title": _("Member registration form"),
+                        "icon": "how_to_reg",
+                        "link": reverse_lazy("member_registration"),
+                        "permission": lambda request: request.user.has_perm("imports.view_importbatch"),
+                    },
                 ],
             },
             {
@@ -305,6 +311,7 @@ UNFOLD = {
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "imports.middleware.RegistrationRequestLimitMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -364,6 +371,11 @@ AUTH_PASSWORD_VALIDATORS = [
 # workers and restarts. A successful login resets only the account bucket.
 LOGIN_ACCOUNT_FAILURE_LIMIT = env.int("LOGIN_ACCOUNT_FAILURE_LIMIT", default=5)
 LOGIN_IP_FAILURE_LIMIT = env.int("LOGIN_IP_FAILURE_LIMIT", default=50)
+
+# A church network/proxy can share an IP, so allow a generous shared budget
+# and a smaller per-browser budget. Forwarded IP headers are not trusted.
+REGISTRATION_IP_LIMIT = env.int("REGISTRATION_IP_LIMIT", default=300)
+REGISTRATION_SESSION_LIMIT = env.int("REGISTRATION_SESSION_LIMIT", default=20)
 
 LANGUAGE_CODE = "en-ph"
 TIME_ZONE = "Asia/Manila"
