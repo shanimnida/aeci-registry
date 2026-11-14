@@ -84,7 +84,7 @@ def test_a_different_child_can_be_approved_without_changing_or_joining_the_names
     assert not family.members.filter(person=row.created_person).exists()
     decided_page = client.get(_review_url(row.batch, row))
     assert decided_page.status_code == 200
-    assert "Reviewer's identity decisions" in decided_page.content.decode()
+    assert "Record matching" in decided_page.content.decode()
 
 
 def test_a_reviewer_can_link_a_child_with_missing_birthdate_without_overwriting_the_existing_identity(client, reviewer, stage):

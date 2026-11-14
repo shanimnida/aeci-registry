@@ -25,7 +25,7 @@ def _add_identity_choice(form, name, candidates, *, label, separate_label):
         return
     form.fields[name] = forms.ChoiceField(
         label=label,
-        choices=[("", "Choose after checking the possible matches"), ("new", separate_label)]
+        choices=[("", "Select an option"), ("new", separate_label)]
         + [(f"link:{p.pk}", candidate_label(p)) for p in candidates],
         widget=forms.RadioSelect(attrs={"class": "h-5 w-5 shrink-0 mt-0.5"}),
     )
@@ -84,13 +84,13 @@ class StagedPersonForm(forms.Form):
         data = {name: _review_value(self, name) for name in ("first_name", "middle_name", "last_name", "date_of_birth")}
         _add_identity_choice(
             self, "person_resolution", subject_candidates(data),
-            label="Possible earlier child record — your decision",
+            label="Possible earlier child record",
             separate_label="Different person — create a separate record",
         )
         _add_identity_choice(
             self, "spouse_resolution",
             spouse_candidates(_review_value(self, "spouse_name"), data["last_name"]),
-            label="Possible spouse record — your decision",
+            label="Possible spouse record",
             separate_label="Different person / do not link an existing spouse",
         )
 
@@ -191,7 +191,7 @@ class ChildForm(forms.Form):
             _add_identity_choice(
                 self, "person_resolution",
                 child_candidates(first, middle, last, _review_value(self, "date_of_birth")),
-                label=f"Possible records for {name} — your decision",
+                label=f"Possible records for {name}",
                 separate_label="Different person — create a separate child record",
             )
 
