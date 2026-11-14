@@ -245,3 +245,43 @@ def test_even_a_unique_spouse_match_is_the_reviewers_decision(client, reviewer, 
         assert family.members.filter(person=row.created_person).exists() is (choice == "link")
         assert Household.objects.count() == (1 if choice == "link" else 2)
         assert row.edited_data["spouse_resolution"] == choices["spouse_resolution"]
+
+
+def test_a_new_parent_who_shares_the_childs_name_does_not_become_an_unseen_identity_choice(client, reviewer, stage):
+    row = stage(first_name="John Marlon")
+    client.force_login(reviewer)
+    page = client.get(_review_url(row.batch, row))
+    assert "person_resolution" not in page.context["formset"].forms[0].fields
+
+    response = client.post(_review_url(row.batch, row), _base_post_data(row))
+
+    assert response.status_code == 302
+    row.refresh_from_db()
+    assert row.status == StagedPersonStatus.APPROVED
+    assert Person.objects.count() == 2
+    child = Person.objects.get(guardian=row.created_person)
+    assert child.pk != row.created_person_id
+    assert child.first_name == row.created_person.first_name == "John Marlon"
+    assert child.date_of_birth == date(2010, 1, 1)
+
+
+@pytest.mark.parametrize("second_name", ["John E. Synthetic", "John Synthetic"], ids=["different-birthdays", "omitted-middle-name"])
+def test_new_children_on_one_form_do_not_become_unseen_candidates_for_each_other(client, reviewer, stage, second_name):
+    row = stage(children=[
+        {"full_name": "John E. Synthetic", "date_of_birth": "2010-01-01"},
+        {"full_name": second_name, "date_of_birth": "2012-01-01"},
+    ])
+    client.force_login(reviewer)
+    page = client.get(_review_url(row.batch, row))
+    assert all("person_resolution" not in form.fields for form in page.context["formset"])
+
+    response = client.post(_review_url(row.batch, row), _base_post_data(row))
+
+    assert response.status_code == 302
+    row.refresh_from_db()
+    assert row.status == StagedPersonStatus.APPROVED
+    assert Person.objects.count() == 3
+    children = Person.objects.filter(guardian=row.created_person)
+    assert children.count() == 2
+    assert set(children.values_list("date_of_birth", flat=True)) == {date(2010, 1, 1), date(2012, 1, 1)}
+    assert Household.objects.count() == 1 and HouseholdMember.objects.count() == 3
