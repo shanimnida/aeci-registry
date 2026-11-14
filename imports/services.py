@@ -49,6 +49,7 @@ from committees.models import Committee, CommitteeMembership, CommitteeRole
 from people.models import Household, HouseholdMember, HouseholdRole, MembershipStatus, Person
 
 from .parsing import SELF_SELECTABLE_COMMITTEE_NAMES
+from .identity import child_candidates, resolve_choice, spouse_candidates, subject_candidates
 
 
 def _split_child_name(full_name: str, parent_last_name: str) -> tuple[str, str, str]:
@@ -343,7 +344,19 @@ def _reconcile_marriage_date(household, date_of_marriage, user, notices):
 _SPREAD_ACROSS_HOUSEHOLDS = object()
 
 
-def _household_from_existing_children(children, person):
+def _resolve_reviewed_child(child, parent_last_name, *, household=None, require_identity_decisions=False):
+    first, middle, last = _split_child_name(child["full_name"], parent_last_name)
+    decision = child.get("person_resolution")
+    if require_identity_decisions or decision:
+        match = resolve_choice(
+            decision, child_candidates(first, middle, last, child.get("date_of_birth")),
+            label=child["full_name"],
+        )
+        return match, False
+    return _find_child_match(first, middle, last, _blank_to_none(child.get("date_of_birth")), household)
+
+
+def _household_from_existing_children(children, person, *, require_identity_decisions=False):
     """The household the children on this form already belong to, if there
     is exactly one.
 
@@ -369,9 +382,8 @@ def _household_from_existing_children(children, person):
         full_name = (child.get("full_name") or "").strip()
         if not full_name:
             continue
-        first_name, middle_name, last_name = _split_child_name(full_name, person.last_name)
-        match, ambiguous = _find_child_match(
-            first_name, middle_name, last_name, _blank_to_none(child.get("date_of_birth"))
+        match, ambiguous = _resolve_reviewed_child(
+            child, person.last_name, require_identity_decisions=require_identity_decisions,
         )
         if ambiguous or match is None:
             continue
@@ -485,7 +497,9 @@ def _find_own_record_from_a_parents_form(cleaned):
     return None, len(candidates) > 1
 
 
-def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple[Person, list[str]]:
+def build_person_from_import(
+    cleaned: dict, children: list[dict], user, *, require_identity_decisions=False,
+) -> tuple[Person, list[str]]:
     """Create (or link) the Person, Household, child Persons and
     CommitteeMemberships for one approved import row.
 
@@ -509,7 +523,16 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
         # A child their parent listed years ago, now filling in their own
         # form (BUG, 2026-08-24). Everything below then UPDATES that record
         # instead of creating a second one.
-        own_record, own_ambiguous = _find_own_record_from_a_parents_form(cleaned)
+        # The staff review path always requires an explicit decision, even
+        # for a single likely match. Legacy programmatic import callers retain
+        # their existing behavior unless they opt into reviewer decisions.
+        if require_identity_decisions or cleaned.get("person_resolution"):
+            own_record = resolve_choice(
+                cleaned.get("person_resolution"), subject_candidates(cleaned), label="this person",
+            )
+            own_ambiguous = False
+        else:
+            own_record, own_ambiguous = _find_own_record_from_a_parents_form(cleaned)
         if own_ambiguous:
             raise ValidationError(
                 "More than one existing child record matches this name and date "
@@ -605,7 +628,14 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
         spouse_name = (cleaned.get("spouse_name") or "").strip()
         spouse_match = None
         if spouse_name:
-            spouse_match, spouse_ambiguous = _find_spouse_match(spouse_name, person.last_name, person.pk)
+            if require_identity_decisions or cleaned.get("spouse_resolution"):
+                spouse_match = resolve_choice(
+                    cleaned.get("spouse_resolution"),
+                    spouse_candidates(spouse_name, person.last_name, person.pk), label="the spouse",
+                )
+                spouse_ambiguous = False
+            else:
+                spouse_match, spouse_ambiguous = _find_spouse_match(spouse_name, person.last_name, person.pk)
             if spouse_ambiguous:
                 notices.append(
                     f"'{spouse_name}' (spouse) matches more than one existing person -- not "
@@ -648,7 +678,9 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
         # 2026-08-24: duplicate households).
         family_is_split = False
         if household is None:
-            existing = _household_from_existing_children(children, person)
+            existing = _household_from_existing_children(
+                children, person, require_identity_decisions=require_identity_decisions,
+            )
             if existing is _SPREAD_ACROSS_HOUSEHOLDS:
                 # Making a third household would put each of these children
                 # in two, which is worse than the mess already there. AEGIS
@@ -704,9 +736,12 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
             first_name, middle_name, last_name = _split_child_name(full_name, person.last_name)
             date_of_birth = _blank_to_none(child.get("date_of_birth"))
 
-            match, ambiguous = _find_child_match(
-                first_name, middle_name, last_name, date_of_birth, household=household
+            match, ambiguous = _resolve_reviewed_child(
+                child, person.last_name, household=household,
+                require_identity_decisions=require_identity_decisions,
             )
+            if match is not None and match.pk == person.pk:
+                raise ValidationError("A person cannot be linked as their own child. Choose a different record.")
             if ambiguous:
                 raise ValidationError(
                     f"'{full_name}' matches more than one existing person, or an existing "
@@ -724,7 +759,7 @@ def build_person_from_import(cleaned: dict, children: list[dict], user) -> tuple
                 # but an existing middle name is never overwritten, since
                 # _names_are_compatible already refused anything that
                 # contradicts it.
-                if middle_name and not child_person.middle_name:
+                if middle_name and not child_person.middle_name and not child.get("person_resolution"):
                     child_person.middle_name = middle_name
                     child_person.updated_by = user
                     child_person.full_clean()

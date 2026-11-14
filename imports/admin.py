@@ -576,7 +576,7 @@ class ImportBatchAdmin(ModelAdmin):
 
             if action == "approve":
                 form = StagedPersonForm(request.POST, website_registration=bool(batch.website_submission_id))
-                formset = ChildFormSet(request.POST, prefix="children")
+                formset = ChildFormSet(request.POST, prefix="children", parent_last_name=request.POST.get("last_name", ""))
                 if form.is_valid() and formset.is_valid():
                     cleaned = dict(form.cleaned_data)
                     if batch.website_submission_id:
@@ -612,9 +612,22 @@ class ImportBatchAdmin(ModelAdmin):
 
                         row.edited_data = {**row.effective_data, **cleaned}
                         row.edited_data["children"] = children
+                        # Keep the labels the reviewer actually saw, alongside
+                        # stable IDs and the existing reviewed_by/at attribution.
+                        decisions = []
+                        for field_name in ("person_resolution", "spouse_resolution"):
+                            if cleaned.get(field_name):
+                                field = form.fields[field_name]
+                                decisions.append(f"{field.label}: {dict(field.choices)[cleaned[field_name]]}")
+                        for child_form in formset:
+                            decision = child_form.cleaned_data.get("person_resolution")
+                            if decision and child_form.cleaned_data.get("full_name"):
+                                field = child_form.fields["person_resolution"]
+                                decisions.append(f"{child_form.cleaned_data['full_name']}: {dict(field.choices)[decision]}")
+                        row.edited_data["_identity_decisions"] = decisions
                         try:
                             approved_person, notices = build_person_from_import(
-                                cleaned, children, request.user
+                                cleaned, children, request.user, require_identity_decisions=True
                             )
                         except ValidationError as exc:
                             row.error_message = "; ".join(exc.messages)
@@ -651,7 +664,7 @@ class ImportBatchAdmin(ModelAdmin):
         if form is None:
             data = row.effective_data
             form = StagedPersonForm(initial=initial_from_data(data), website_registration=bool(batch.website_submission_id))
-            formset = ChildFormSet(initial=children_initial(data), prefix="children")
+            formset = ChildFormSet(initial=children_initial(data), prefix="children", parent_last_name=data.get("last_name", ""))
 
         # MINOR 8 (2026-08-16 import fixes): this used to only fire *after*
         # the Person already existed, as a flash message on the way out of a
@@ -699,6 +712,7 @@ class ImportBatchAdmin(ModelAdmin):
             "batch": batch,
             "row": row,
             "effective_data": row.effective_data,
+            "identity_decisions": row.effective_data.get("_identity_decisions", []),
             "uncertain_by_field": uncertain_by_field,
             "other_flags": other_flags,
             "confidence": row.raw_data.get("confidence"),

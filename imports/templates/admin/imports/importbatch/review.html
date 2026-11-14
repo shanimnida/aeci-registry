@@ -66,7 +66,7 @@
         <div class="font-semibold text-red-700 dark:text-red-400">This could not be approved as entered:</div>
         <div class="text-sm text-red-700 dark:text-red-400 mt-1">{{ row.error_message }}</div>
         <div class="text-xs text-red-600/80 dark:text-red-400/80 mt-2">
-            Correct the field(s) below and try Approve again, or Skip / Reject this entry.
+            Check the fields and possible-match choices below, then try Approve again, or Skip / Reject this entry.
         </div>
     </div>
 {% endif %}
@@ -88,6 +88,15 @@
     <p class="text-sm text-base-500 dark:text-base-400 mb-8">
         This entry has already been decided, so it is shown for reference only.
     </p>
+
+    {% if identity_decisions %}
+        <div class="mb-8">
+            <h2 class="font-semibold mb-3">Reviewer's identity decisions</h2>
+            <ul class="list-disc pl-5 space-y-2 text-sm">
+                {% for decision in identity_decisions %}<li>{{ decision }}</li>{% endfor %}
+            </ul>
+        </div>
+    {% endif %}
 
     <div class="mb-8">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-base-400 dark:text-base-500 pb-3 mb-5 border-b border-base-200 dark:border-base-800">Personal information</h2>
@@ -192,6 +201,9 @@ throughout -- the congregation includes older volunteers.
             {% include "admin/imports/importbatch/_field.html" with field=form.civil_status uncertain=uncertain_by_field.civil_status %}
             {% include "admin/imports/importbatch/_field.html" with field=form.nationality uncertain=uncertain_by_field.nationality %}
         </div>
+        {% if form.person_resolution %}
+            {% include "admin/imports/importbatch/_identity_choice.html" with field=form.person_resolution identity_kind="subject" %}
+        {% endif %}
         <div class="mt-1 pt-4 border-t border-base-100 dark:border-base-800">
             <div class="text-xs text-base-400 dark:text-base-500 mb-2">Not on the paper form &mdash; your decision:</div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
@@ -216,6 +228,10 @@ throughout -- the congregation includes older volunteers.
             {% include "admin/imports/importbatch/_field.html" with field=form.date_of_marriage uncertain=uncertain_by_field.date_of_marriage %}
         </div>
 
+        {% if form.spouse_resolution %}
+            {% include "admin/imports/importbatch/_identity_choice.html" with field=form.spouse_resolution identity_kind="spouse" %}
+        {% endif %}
+
         <div class="mb-5">
             <div class="flex items-center gap-2 font-semibold text-font-important-light dark:text-font-important-dark text-[15px] mb-3">
                 Children
@@ -226,9 +242,14 @@ throughout -- the congregation includes older volunteers.
             {% if formset.forms %}
                 <div class="space-y-3">
                     {% for child_form in formset %}
+                        <div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {{ child_form.full_name }}
-                            {{ child_form.date_of_birth }}
+                            {% include "admin/imports/importbatch/_field.html" with field=child_form.full_name %}
+                            {% include "admin/imports/importbatch/_field.html" with field=child_form.date_of_birth %}
+                        </div>
+                        {% if child_form.person_resolution %}
+                            {% include "admin/imports/importbatch/_identity_choice.html" with field=child_form.person_resolution identity_kind="child" %}
+                        {% endif %}
                         </div>
                     {% endfor %}
                 </div>
@@ -236,6 +257,7 @@ throughout -- the congregation includes older volunteers.
             {% else %}
                 <div class="text-sm text-base-400 dark:text-base-500">None recorded.</div>
             {% endif %}
+            {% if formset.non_form_errors %}<div class="text-red-600">{{ formset.non_form_errors }}</div>{% endif %}
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-6">
@@ -301,10 +323,10 @@ throughout -- the congregation includes older volunteers.
         <button type="submit" name="action" value="approve" accesskey="a" title="Approve (Alt+A)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-base-200 bg-primary-600 border-transparent text-white hover:bg-primary-600/80 cursor-pointer">
             Approve
         </button>
-        <button type="submit" name="action" value="skip" accesskey="k" title="Skip for now (Alt+K)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent dark:hover:bg-base-800/80 cursor-pointer">
+        <button type="submit" name="action" value="skip" formnovalidate accesskey="k" title="Skip for now (Alt+K)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-base-200 bg-white text-important hover:bg-base-100/80 dark:border-base-700 dark:bg-transparent dark:hover:bg-base-800/80 cursor-pointer">
             Skip for now
         </button>
-        <button type="submit" name="action" value="reject" accesskey="r" title="Reject (Alt+R)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-red-600 bg-red-600 border-transparent text-white hover:bg-red-600/80 cursor-pointer sm:ml-auto">
+        <button type="submit" name="action" value="reject" formnovalidate accesskey="r" title="Reject (Alt+R)" class="font-medium inline-flex items-center gap-1 rounded-default justify-center px-6 py-3 text-[15px] border border-red-600 bg-red-600 border-transparent text-white hover:bg-red-600/80 cursor-pointer sm:ml-auto">
             Reject
         </button>
     </div>

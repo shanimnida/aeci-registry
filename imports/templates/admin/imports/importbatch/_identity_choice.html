@@ -1,0 +1,18 @@
+<fieldset class="border border-base-200 dark:border-base-700 rounded-default p-4 mb-5 text-base-700 dark:text-base-200">
+    <legend class="font-semibold px-1 text-[15px]">{{ field.label }}</legend>
+    <p class="text-sm mb-3">A similar name does not prove this is the same person. You make the final decision.</p>
+    {% for radio in field %}
+        {% if radio.data.value %}
+            <label class="flex items-start gap-3 py-3 text-[15px] cursor-pointer">
+                {{ radio.tag }}
+                <span>{{ radio.choice_label }}</span>
+            </label>
+        {% endif %}
+    {% endfor %}
+    {% if identity_kind == "subject" %}
+        <p class="text-sm mt-3">Linking an earlier child record updates its details from this form and keeps its current membership status.</p>
+    {% elif identity_kind == "child" %}
+        <p class="text-sm mt-3">Linking a child keeps the existing record's details.</p>
+    {% endif %}
+    {% if field.errors %}<div class="text-sm text-red-600 dark:text-red-400 mt-3" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+</fieldset>

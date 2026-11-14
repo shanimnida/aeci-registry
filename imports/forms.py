@@ -11,6 +11,24 @@ from unfold.widgets import (
 from people.models import CivilStatus, Gender, MembershipStatus
 
 from .parsing import ALL_COMMITTEE_NAMES, FORM_VERSIONS
+from .identity import candidate_label, child_candidates, spouse_candidates, subject_candidates
+
+
+def _review_value(form, name):
+    return (form.data.get(form.add_prefix(name)) if form.is_bound else form.initial.get(name)) or ""
+
+
+def _add_identity_choice(form, name, candidates, *, label, separate_label):
+    # Preserve a submitted choice for validation even if its last candidate
+    # was deleted or renamed since the review page was opened.
+    if not candidates and not (form.is_bound and _review_value(form, name)):
+        return
+    form.fields[name] = forms.ChoiceField(
+        label=label,
+        choices=[("", "Choose after checking the possible matches"), ("new", separate_label)]
+        + [(f"link:{p.pk}", candidate_label(p)) for p in candidates],
+        widget=forms.RadioSelect(attrs={"class": "h-5 w-5 shrink-0 mt-0.5"}),
+    )
 
 
 # IMPORTANT 5 (2026-08-16 import fixes): imports/admin.py's upload_view reads
@@ -63,6 +81,18 @@ class StagedPersonForm(forms.Form):
                 required=False, max_length=2000, label="Member's message to the Secretariat",
                 widget=UnfoldAdminTextareaWidget(attrs={"rows": 3}),
             )
+        data = {name: _review_value(self, name) for name in ("first_name", "middle_name", "last_name", "date_of_birth")}
+        _add_identity_choice(
+            self, "person_resolution", subject_candidates(data),
+            label="Possible earlier child record — your decision",
+            separate_label="Different person — create a separate record",
+        )
+        _add_identity_choice(
+            self, "spouse_resolution",
+            spouse_candidates(_review_value(self, "spouse_name"), data["last_name"]),
+            label="Possible spouse record — your decision",
+            separate_label="Different person / do not link an existing spouse",
+        )
 
     member_no = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     last_name = forms.CharField(widget=UnfoldAdminTextInputWidget)
@@ -151,13 +181,36 @@ class StagedPersonForm(forms.Form):
 
 
 class ChildForm(forms.Form):
+    def __init__(self, *args, parent_last_name="", **kwargs):
+        super().__init__(*args, **kwargs)
+        from .services import _split_child_name
+
+        name = _review_value(self, "full_name").strip()
+        if name:
+            first, middle, last = _split_child_name(name, parent_last_name)
+            _add_identity_choice(
+                self, "person_resolution",
+                child_candidates(first, middle, last, _review_value(self, "date_of_birth")),
+                label=f"Possible records for {name} — your decision",
+                separate_label="Different person — create a separate child record",
+            )
+
     full_name = forms.CharField(required=False, widget=UnfoldAdminTextInputWidget)
     date_of_birth = forms.CharField(
         required=False, widget=UnfoldAdminTextInputWidget, help_text="YYYY-MM-DD"
     )
 
 
-ChildFormSet = forms.formset_factory(ChildForm, extra=0)
+class BaseChildFormSet(forms.BaseFormSet):
+    def __init__(self, *args, parent_last_name="", **kwargs):
+        self.parent_last_name = parent_last_name
+        super().__init__(*args, **kwargs)
+
+    def get_form_kwargs(self, index):
+        return {**super().get_form_kwargs(index), "parent_last_name": self.parent_last_name}
+
+
+ChildFormSet = forms.formset_factory(ChildForm, formset=BaseChildFormSet, extra=0)
 
 
 def initial_from_data(data: dict) -> dict:
@@ -166,6 +219,8 @@ def initial_from_data(data: dict) -> dict:
     initial["membership_status"] = data.get("membership_status") or MembershipStatus.MEMBER
     initial["committees"] = data.get("committees") or []
     initial["notes"] = data.get("notes") or ""
+    for field in ("person_resolution", "spouse_resolution"):
+        initial[field] = data.get(field) or ""
     for text_field in ("member_no", "middle_name", "suffix", "place_of_birth", "nationality",
                         "home_address", "mobile_number", "email", "spouse_name", "nickname",
                         "emergency_contact_name",
@@ -179,6 +234,7 @@ def initial_from_data(data: dict) -> dict:
 def children_initial(data: dict) -> list[dict]:
     children = data.get("children") or []
     return [
-        {"full_name": child.get("full_name") or "", "date_of_birth": child.get("date_of_birth") or ""}
+        {"full_name": child.get("full_name") or "", "date_of_birth": child.get("date_of_birth") or "",
+         "person_resolution": child.get("person_resolution") or ""}
         for child in children
     ]
