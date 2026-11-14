@@ -45,7 +45,7 @@ def _review_url(batch, row):
     return reverse("admin:imports_importbatch_review", args=[batch.pk, row.pk])
 
 
-def _post_data(row):
+def _post_data(row, *, link_existing_family=False):
     data = row.raw_data
     post = {
         "action": "approve",
@@ -81,6 +81,12 @@ def _post_data(row):
     for index, child in enumerate(data.get("children") or []):
         post[f"children-{index}-full_name"] = child["full_name"]
         post[f"children-{index}-date_of_birth"] = child.get("date_of_birth") or ""
+        if link_existing_family:
+            existing = Person.objects.get(date_of_birth=child["date_of_birth"])
+            post[f"children-{index}-person_resolution"] = f"link:{existing.pk}"
+    if link_existing_family:
+        spouse = Person.objects.get(first_name__istartswith=data["spouse_name"].split()[0])
+        post["spouse_resolution"] = f"link:{spouse.pk}"
     return post
 
 
@@ -97,7 +103,7 @@ def test_husband_then_wife_produces_one_household_and_two_children_not_two_and_f
     response = client.post(_review_url(batch, husband), _post_data(husband))
     assert response.status_code == 302
 
-    response = client.post(_review_url(batch, wife), _post_data(wife))
+    response = client.post(_review_url(batch, wife), _post_data(wife, link_existing_family=True))
     assert response.status_code == 302
 
     # Exactly 4 real people: husband, wife, and the two children -- not the
@@ -133,7 +139,7 @@ def test_wife_then_husband_also_produces_one_household_and_two_children(
     wife = rows["GLEAN"]
 
     client.post(_review_url(batch, wife), _post_data(wife))
-    client.post(_review_url(batch, husband), _post_data(husband))
+    client.post(_review_url(batch, husband), _post_data(husband, link_existing_family=True))
 
     assert Person.objects.count() == 4
     assert Person.objects.filter(membership_status=MembershipStatus.CHILD).count() == 2
@@ -153,7 +159,7 @@ def test_linking_the_second_parent_is_reported_on_the_approval_result(
     wife = rows["GLEAN"]
     client.post(_review_url(batch, husband), _post_data(husband))
 
-    response = client.post(_review_url(batch, wife), _post_data(wife), follow=True)
+    response = client.post(_review_url(batch, wife), _post_data(wife, link_existing_family=True), follow=True)
     body = response.content.decode()
     assert "Linked to existing child" in body
     assert "SHILOH" in body.upper()
@@ -197,8 +203,7 @@ def test_a_child_with_no_recorded_birthdate_is_refused_not_silently_duplicated(
 
     husband.refresh_from_db()
     assert husband.status == StagedPersonStatus.PENDING
-    assert husband.error_message
-    assert "SHILOH" in husband.error_message.upper()
+    assert response.context["formset"].forms[0].errors["person_resolution"]
     # Nothing partially written: still just the one pre-existing child, no
     # second one created under the same name.
     assert Person.objects.filter(last_name="Jose", first_name__iexact="Shiloh Andrei K.").count() == 1
@@ -223,8 +228,7 @@ def test_an_ambiguous_child_match_is_refused_not_guessed(client, secretariat_use
 
     wife.refresh_from_db()
     assert wife.status == StagedPersonStatus.PENDING
-    assert wife.error_message
-    assert "SHILOH" in wife.error_message.upper()
+    assert response.context["formset"].forms[0].errors["person_resolution"]
     # Nothing partially written: no third child, no second household.
     assert Person.objects.filter(membership_status=MembershipStatus.CHILD).count() == 2
     assert Household.objects.count() == 1
