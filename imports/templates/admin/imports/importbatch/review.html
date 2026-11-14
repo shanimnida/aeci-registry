@@ -91,7 +91,7 @@
 
     {% if identity_decisions %}
         <div class="mb-8">
-            <h2 class="font-semibold mb-3">Reviewer's identity decisions</h2>
+            <h2 class="font-semibold mb-3">Record matching</h2>
             <ul class="list-disc pl-5 space-y-2 text-sm">
                 {% for decision in identity_decisions %}<li>{{ decision }}</li>{% endfor %}
             </ul>
@@ -205,7 +205,6 @@ throughout -- the congregation includes older volunteers.
             {% include "admin/imports/importbatch/_identity_choice.html" with field=form.person_resolution identity_kind="subject" %}
         {% endif %}
         <div class="mt-1 pt-4 border-t border-base-100 dark:border-base-800">
-            <div class="text-xs text-base-400 dark:text-base-500 mb-2">Not on the paper form &mdash; your decision:</div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
                 {% include "admin/imports/importbatch/_field.html" with field=form.membership_status %}
             </div>

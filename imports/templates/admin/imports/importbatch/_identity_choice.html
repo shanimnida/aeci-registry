@@ -1,6 +1,5 @@
 <fieldset class="border border-base-200 dark:border-base-700 rounded-default p-4 mb-5 text-base-700 dark:text-base-200">
     <legend class="font-semibold px-1 text-[15px]">{{ field.label }}</legend>
-    <p class="text-sm mb-3">A similar name does not prove this is the same person. You make the final decision.</p>
     {% for radio in field %}
         {% if radio.data.value %}
             <label class="flex items-start gap-3 py-3 text-[15px] cursor-pointer">
